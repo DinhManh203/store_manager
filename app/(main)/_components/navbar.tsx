@@ -12,9 +12,8 @@ import {
   Sun,
   UserCircle2,
 } from "lucide-react";
-import { useTheme } from "next-themes";
 
-import { Badge } from "@/components/ui/badge";
+import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -41,12 +40,12 @@ const Navbar = ({ isSidebarOpen, onToggleSidebar }: NavbarProps) => {
   const isDark = mounted && resolvedTheme === "dark";
   const authName =
     mounted && typeof window !== "undefined"
-      ? window.localStorage.getItem("auth_username") || "Admin"
-      : "Admin";
+      ? window.localStorage.getItem("auth_username") || "Người dùng"
+      : "Người dùng";
   const authRole =
     mounted && typeof window !== "undefined"
-      ? window.localStorage.getItem("auth_role") || "Admin"
-      : "Admin";
+      ? window.localStorage.getItem("auth_role") || "Chưa xác định"
+      : "Chưa xác định";
 
   const handleToggleTheme = () => {
     setTheme(isDark ? "light" : "dark");

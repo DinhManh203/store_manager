@@ -5,18 +5,9 @@ import { extractAuthToken, extractErrorMessage, extractRole } from "@/lib/auth";
 const AUTH_COOKIE_NAME = "auth_token";
 const AUTH_ROLE_COOKIE_NAME = "auth_role";
 const ONE_WEEK_IN_SECONDS = 60 * 60 * 24 * 7;
-const DEFAULT_ADMIN_ROLE = "Admin";
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
-
-const getAdminCredentials = () => {
-  const username = process.env.ADMIN_USER_NAME?.trim() ?? "";
-  const password = process.env.ADMIN_PASSWORD ?? "";
-  const role = process.env.ADMIN_ROLE?.trim() || DEFAULT_ADMIN_ROLE;
-
-  return { username, password, role };
-};
 
 const setAuthCookies = (
   response: NextResponse,
@@ -90,6 +81,48 @@ const readPayload = async (response: Response) => {
   return text ? { message: text } : {};
 };
 
+const shouldFallbackToJson = (status: number) =>
+  status === 404 || status === 405 || status === 415 || status === 422;
+
+const loginWithBackend = async (
+  backendUrl: string,
+  username: string,
+  password: string
+) => {
+  const formBody = new URLSearchParams();
+  formBody.set("username", username);
+  formBody.set("password", password);
+
+  const formResponse = await fetch(backendUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: formBody.toString(),
+    cache: "no-store",
+  });
+  const formPayload = await readPayload(formResponse);
+
+  if (formResponse.ok || !shouldFallbackToJson(formResponse.status)) {
+    return { response: formResponse, payload: formPayload };
+  }
+
+  const jsonResponse = await fetch(backendUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      username,
+      password,
+    }),
+    cache: "no-store",
+  });
+  const jsonPayload = await readPayload(jsonResponse);
+
+  return { response: jsonResponse, payload: jsonPayload };
+};
+
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as {
@@ -107,39 +140,12 @@ export async function POST(request: Request) {
       );
     }
 
-    const admin = getAdminCredentials();
-    const isAdminLogin =
-      Boolean(admin.username && admin.password) &&
-      username === admin.username &&
-      password === admin.password;
-
-    if (isAdminLogin) {
-      const token = `local-admin-${crypto.randomUUID()}`;
-      const responsePayload = buildSuccessPayload(
-        { message: "Đăng nhập thành công." },
-        token,
-        admin.role
-      );
-      const response = NextResponse.json(responsePayload);
-      setAuthCookies(response, token, admin.role);
-      return response;
-    }
-
     const backendUrl = resolveBackendLoginUrl();
-
-    const backendResponse = await fetch(backendUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        username,
-        password,
-      }),
-      cache: "no-store",
-    });
-
-    const payload = await readPayload(backendResponse);
+    const { response: backendResponse, payload } = await loginWithBackend(
+      backendUrl,
+      username,
+      password
+    );
 
     if (!backendResponse.ok) {
       return NextResponse.json(

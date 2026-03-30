@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import { Laptop, Moon, Sun } from "lucide-react";
-import { useTheme } from "next-themes";
+import { useTheme } from "@/components/theme-provider";
 
 import { Badge } from "@/components/ui/badge";
 import {
@@ -82,7 +82,7 @@ export default function SettingsPage() {
                 onClick={() => setTheme(option.value)}
                 className={cn(
                   "rounded-xl border p-4 text-left transition-colors",
-                  "hover:bg-muted/60",
+                  "hover:bg-muted/60 cursor-pointer",
                   isActive
                     ? "border-primary bg-primary/5"
                     : "border-border/70 bg-background"
@@ -101,3 +101,4 @@ export default function SettingsPage() {
     </div>
   );
 }
+

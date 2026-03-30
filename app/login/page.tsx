@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import { FormEvent, useState } from "react";
-import { Loader2, LogIn } from "lucide-react";
+import { Eye, EyeOff, Loader2, LogIn } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
@@ -12,8 +12,15 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from "@/components/ui/input-group";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { toast } from "@/components/ui/toast";
 import { extractAuthToken, extractErrorMessage, extractRole } from "@/lib/auth";
 
 type LoginForm = {
@@ -30,6 +37,7 @@ export default function LoginPage() {
   const router = useRouter();
   const [form, setForm] = useState<LoginForm>(initialForm);
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
 
   const handleChange = (field: keyof LoginForm, value: string) => {
@@ -43,7 +51,9 @@ export default function LoginPage() {
     const password = form.password;
 
     if (!username || !password) {
-      setError("Vui lòng nhập đầy đủ tài khoản và mật khẩu.");
+      const message = "Vui lòng nhập đầy đủ tài khoản và mật khẩu.";
+      setError(message);
+      toast.warning(message);
       return;
     }
 
@@ -65,7 +75,9 @@ export default function LoginPage() {
       const payload = await response.json().catch(() => ({}));
 
       if (!response.ok) {
-        setError(extractErrorMessage(payload) || "Đăng nhập thất bại.");
+        const message = extractErrorMessage(payload) || "Đăng nhập thất bại.";
+        setError(message);
+        toast.error(message);
         return;
       }
 
@@ -77,13 +89,18 @@ export default function LoginPage() {
       const role = extractRole(payload);
       if (role) {
         localStorage.setItem("auth_role", role);
+      } else {
+        localStorage.removeItem("auth_role");
       }
       localStorage.setItem("auth_username", username);
+      toast.success("Đăng nhập thành công.");
 
       router.replace("/");
       router.refresh();
     } catch {
-      setError("Không thể kết nối API. Vui lòng thử lại.");
+      const message = "Không thể kết nối API. Vui lòng thử lại.";
+      setError(message);
+      toast.error(message);
     } finally {
       setIsLoading(false);
     }
@@ -112,14 +129,27 @@ export default function LoginPage() {
 
             <div className="space-y-2">
               <Label htmlFor="password">Mật khẩu</Label>
-              <Input
-                id="password"
-                type="password"
-                value={form.password}
-                autoComplete="current-password"
-                placeholder="Nhập mật khẩu"
-                onChange={(event) => handleChange("password", event.target.value)}
-              />
+              <InputGroup>
+                <InputGroupInput
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  value={form.password}
+                  autoComplete="current-password"
+                  placeholder="Nhập mật khẩu"
+                  onChange={(event) => handleChange("password", event.target.value)}
+                />
+                <InputGroupAddon align="inline-end">
+                  <InputGroupButton
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    aria-label={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+                  >
+                    {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                  </InputGroupButton>
+                </InputGroupAddon>
+              </InputGroup>
             </div>
 
             {error && <p className="text-sm text-destructive">{error}</p>}

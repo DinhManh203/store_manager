@@ -18,8 +18,8 @@ export default function ProfilePage() {
       : "admin";
   const role =
     mounted && typeof window !== "undefined"
-      ? window.localStorage.getItem("auth_role") || "Admin"
-      : "Admin";
+      ? window.localStorage.getItem("auth_role") || "Chưa xác định"
+      : "Chưa xác định";
 
   return (
     <div className="space-y-6">

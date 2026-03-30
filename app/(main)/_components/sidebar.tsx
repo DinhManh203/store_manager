@@ -1,24 +1,88 @@
-﻿"use client";
+"use client";
 
+import { useEffect, useMemo } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { LayoutDashboard, Settings, ShieldCheck, Store } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { LayoutDashboard, Settings, Store, Users } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
+import { useMounted } from "@/hooks/use-mounted";
+import { extractRoleFromToken, isAdminRole } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
-const navigationItems = [
+const baseNavigationItems = [
   { label: "Bảng điều khiển", href: "/", icon: LayoutDashboard },
   { label: "Quản lý kho", href: "/storage", icon: Store },
-  { label: "Cài đặt", href: "/settings", icon: Settings },
 ];
+
+const adminNavigationItem = {
+  label: "Quản lý người dùng",
+  href: "/users",
+  icon: Users,
+};
+
+const settingsNavigationItem = {
+  label: "Cài đặt",
+  href: "/settings",
+  icon: Settings,
+};
 
 type SidebarProps = {
   isOpen: boolean;
 };
 
+const readAuthRole = () => {
+  if (typeof window === "undefined") {
+    return "";
+  }
+
+  const roleFromStorage = window.localStorage.getItem("auth_role")?.trim() ?? "";
+  if (roleFromStorage) {
+    return roleFromStorage;
+  }
+
+  const token = window.localStorage.getItem("auth_token") ?? "";
+  const roleFromToken = extractRoleFromToken(token);
+  if (roleFromToken) {
+    return roleFromToken;
+  }
+
+  const roleCookie = document.cookie
+    .split("; ")
+    .find((item) => item.startsWith("auth_role="));
+
+  if (!roleCookie) {
+    return "";
+  }
+
+  try {
+    return decodeURIComponent(roleCookie.slice("auth_role=".length)).trim();
+  } catch {
+    return roleCookie.slice("auth_role=".length).trim();
+  }
+};
+
 const Sidebar = ({ isOpen }: SidebarProps) => {
   const pathname = usePathname();
+  const router = useRouter();
+  const mounted = useMounted();
+
+  const authRole = mounted ? readAuthRole() : "";
+
+  const isAdmin = isAdminRole(authRole);
+
+  const navigationItems = useMemo(
+    () =>
+      isAdmin
+        ? [...baseNavigationItems, adminNavigationItem, settingsNavigationItem]
+        : [...baseNavigationItems, settingsNavigationItem],
+    [isAdmin]
+  );
+
+  useEffect(() => {
+    navigationItems.forEach((item) => {
+      router.prefetch(item.href);
+    });
+  }, [navigationItems, router]);
 
   return (
     <aside
@@ -34,10 +98,6 @@ const Sidebar = ({ isOpen }: SidebarProps) => {
           </p>
           <h1 className="text-xl font-semibold tracking-tight">Vận hành kho</h1>
         </div>
-        <Badge variant="secondary" className="gap-1.5">
-          <ShieldCheck className="size-3.5" />
-          Bảo mật
-        </Badge>
       </div>
 
       <nav className="space-y-1.5">
@@ -50,8 +110,11 @@ const Sidebar = ({ isOpen }: SidebarProps) => {
             <Link
               key={item.label}
               href={item.href}
+              prefetch
+              onMouseEnter={() => router.prefetch(item.href)}
+              onFocus={() => router.prefetch(item.href)}
               className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors will-change-[background-color,color]",
                 isActive
                   ? "bg-primary text-primary-foreground"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground"
