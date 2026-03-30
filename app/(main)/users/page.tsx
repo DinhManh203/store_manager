@@ -81,6 +81,24 @@ type EmployeeForm = {
   temporaryPassword: string;
 };
 
+type EmployeeLike =
+  | (Record<string, unknown> & { id: unknown })
+  | (Record<string, unknown> & { user_id: unknown })
+  | (Record<string, unknown> & { username: unknown })
+  | (Record<string, unknown> & { user_name: unknown })
+  | (Record<string, unknown> & { tai_khoan: unknown })
+  | (Record<string, unknown> & { account: unknown })
+  | (Record<string, unknown> & { full_name: unknown })
+  | (Record<string, unknown> & { fullName: unknown })
+  | (Record<string, unknown> & { ho_ten: unknown })
+  | (Record<string, unknown> & { name: unknown })
+  | (Record<string, unknown> & { ten: unknown })
+  | (Record<string, unknown> & { email: unknown })
+  | (Record<string, unknown> & { gmail: unknown })
+  | (Record<string, unknown> & { email_address: unknown })
+  | (Record<string, unknown> & { role: unknown })
+  | (Record<string, unknown> & { vai_tro: unknown });
+
 const roleOptions: { value: EmployeeRole; label: string }[] = [
   { value: "admin", label: "Quản trị viên" },
   { value: "user", label: "Nhân viên" },
@@ -99,6 +117,96 @@ const roleBadgeVariantMap: Record<EmployeeRole, "destructive" | "secondary" | "o
 
 const PASSWORD_CHARACTERS =
   "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%&*?";
+const BACKEND_TEMP_PASSWORD_PLACEHOLDER = "Đã cấp trên backend";
+const BACKEND_TEMP_PASSWORD_MARKERS = ["da cap tren backend", "da cap tren beckend"];
+const TEMP_PASSWORD_STORAGE_KEY = "employee_known_temp_passwords_v1";
+
+type KnownTempPasswordMap = Record<string, string>;
+
+const normalizeVietnameseText = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLowerCase();
+
+const normalizeTemporaryPassword = (value: string) => {
+  const trimmedValue = value.trim();
+  const comparableValue = normalizeVietnameseText(trimmedValue);
+  const isBackendPlaceholder =
+    trimmedValue === BACKEND_TEMP_PASSWORD_PLACEHOLDER ||
+    BACKEND_TEMP_PASSWORD_MARKERS.some((marker) => comparableValue.includes(marker));
+
+  if (!trimmedValue || isBackendPlaceholder) {
+    return "";
+  }
+
+  return trimmedValue;
+};
+
+const createTempPasswordKeys = (employee: {
+  id?: string;
+  user_id?: string;
+  email?: string;
+}) => {
+  const keys: string[] = [];
+  const id = (employee.id ?? employee.user_id ?? "").trim();
+  const email = (employee.email ?? "").trim().toLowerCase();
+
+  if (id) {
+    keys.push(`id:${id}`);
+  }
+
+  if (email) {
+    keys.push(`email:${email}`);
+  }
+
+  return keys;
+};
+
+const readKnownTempPasswords = (): KnownTempPasswordMap => {
+  if (typeof window === "undefined") {
+    return {};
+  }
+
+  try {
+    const rawValue = window.localStorage.getItem(TEMP_PASSWORD_STORAGE_KEY);
+    if (!rawValue) {
+      return {};
+    }
+
+    const parsedValue = JSON.parse(rawValue) as unknown;
+    if (!isObject(parsedValue)) {
+      return {};
+    }
+
+    return Object.entries(parsedValue).reduce<KnownTempPasswordMap>((accumulator, [key, value]) => {
+      if (typeof value === "string" && value.trim()) {
+        accumulator[key] = value;
+      }
+
+      return accumulator;
+    }, {});
+  } catch {
+    return {};
+  }
+};
+
+const persistKnownTempPasswords = (knownPasswords: KnownTempPasswordMap) => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(TEMP_PASSWORD_STORAGE_KEY, JSON.stringify(knownPasswords));
+  } catch {
+    // Ignore storage errors.
+  }
+};
+
+const hasUsableTemporaryPassword = (value: string) =>
+  Boolean(normalizeTemporaryPassword(value));
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_PATTERN = /^[0-9+\-\s]{9,15}$/;
@@ -117,7 +225,7 @@ const accessoryConfigs = Accessories as PieceConfigMap;
 
 const bodyTypes = Object.keys(bodyConfigs);
 const headTypes = Object.keys(headConfigs);
-const faceTypes = Object.keys(faceConfigs);
+const faceTypes = Object.keys(faceConfigs).filter((type) => type !== "ConcernedFear");
 const beardTypes = Object.keys(beardConfigs);
 const accessoryTypes = Object.keys(accessoryConfigs);
 
@@ -256,14 +364,21 @@ const employeeArrayKeys = [
   "employee_list",
   "users",
   "staff",
+  "items",
+  "results",
+  "records",
+  "rows",
+  "list",
   "accounts",
   "demo_admin_accounts",
   "admin_demo_accounts",
+  "danh_sach_nguoi_dung",
+  "danh_sach_tai_khoan",
   "danh_sach_nhan_vien",
   "danh_sach_tai_khoan_admin_demo",
 ] as const;
 
-const isEmployeeLike = (value: unknown): value is Record<string, unknown> => {
+const isEmployeeLike = (value: unknown): value is EmployeeLike => {
   if (!isObject(value)) {
     return false;
   }
@@ -272,10 +387,19 @@ const isEmployeeLike = (value: unknown): value is Record<string, unknown> => {
     "id" in value ||
     "user_id" in value ||
     "username" in value ||
+    "user_name" in value ||
+    "tai_khoan" in value ||
+    "account" in value ||
     "full_name" in value ||
+    "fullName" in value ||
+    "ho_ten" in value ||
     "name" in value ||
+    "ten" in value ||
     "email" in value ||
-    "role" in value
+    "gmail" in value ||
+    "email_address" in value ||
+    "role" in value ||
+    "vai_tro" in value
   );
 };
 
@@ -286,6 +410,10 @@ const findEmployeeArray = (payload: unknown): unknown[] => {
 
   if (!isObject(payload)) {
     return [];
+  }
+
+  if (isEmployeeLike(payload)) {
+    return [payload];
   }
 
   for (const key of employeeArrayKeys) {
@@ -301,6 +429,10 @@ const findEmployeeArray = (payload: unknown): unknown[] => {
   }
 
   if (isObject(data)) {
+    if (isEmployeeLike(data)) {
+      return [data];
+    }
+
     for (const key of employeeArrayKeys) {
       const candidate = data[key];
       if (Array.isArray(candidate)) {
@@ -335,16 +467,42 @@ const mapPayloadToEmployees = (payload: unknown): Employee[] => {
         readString(record.id) ||
         readString(record.user_id) ||
         readString(record.username) ||
+        readString(record.user_name) ||
+        readString(record.tai_khoan) ||
+        readString(record.account) ||
         `backend-user-${index + 1}`;
-      const email = readString(record.email).toLowerCase();
+      const email =
+        (
+          readString(record.email) ||
+          readString(record.gmail) ||
+          readString(record.email_address)
+        ).toLowerCase();
       const name =
         readString(record.full_name) ||
+        readString(record.fullName) ||
+        readString(record.ho_ten) ||
         readString(record.name) ||
+        readString(record.ten) ||
         readString(record.username) ||
+        readString(record.user_name) ||
+        readString(record.tai_khoan) ||
         email ||
         `Nhân viên ${index + 1}`;
-      const phone = readString(record.phone) || "-";
-      const role = toEmployeeRole(readString(record.role), "user");
+      const phone =
+        readString(record.phone) ||
+        readString(record.phone_number) ||
+        readString(record.so_dien_thoai) ||
+        "-";
+      const role = toEmployeeRole(
+        readString(record.role) || readString(record.vai_tro),
+        "user"
+      );
+      const rawTemporaryPassword =
+        readString(record.temporary_password) ||
+        readString(record.temp_password) ||
+        readString(record.password_tam) ||
+        readString(record.mat_khau_tam);
+      const temporaryPassword = normalizeTemporaryPassword(rawTemporaryPassword);
 
       return {
         id,
@@ -352,10 +510,47 @@ const mapPayloadToEmployees = (payload: unknown): Employee[] => {
         email: email || "-",
         phone,
         role,
-        temporaryPassword: "Đã cấp trên backend",
+        temporaryPassword,
         avatar: createAvatarFromSeed(`${id}-${name}-${email || index}`),
       };
     });
+};
+
+const mergeEmployeesKeepingKnownPasswords = (
+  previousEmployees: Employee[],
+  nextEmployees: Employee[],
+  knownTempPasswords: KnownTempPasswordMap
+) => {
+  const previousById = new Map(previousEmployees.map((employee) => [employee.id, employee]));
+  const previousByEmail = new Map(
+    previousEmployees.map((employee) => [employee.email.toLowerCase(), employee])
+  );
+
+  return nextEmployees.map((employee) => {
+    if (hasUsableTemporaryPassword(employee.temporaryPassword)) {
+      return employee;
+    }
+
+    const [idKey, emailKey] = createTempPasswordKeys({
+      id: employee.id,
+      email: employee.email,
+    });
+    const knownPassword = normalizeTemporaryPassword(
+      (idKey && knownTempPasswords[idKey]) || (emailKey && knownTempPasswords[emailKey]) || ""
+    );
+    if (knownPassword) {
+      return { ...employee, temporaryPassword: knownPassword };
+    }
+
+    const previousEmployee =
+      previousById.get(employee.id) || previousByEmail.get(employee.email.toLowerCase());
+
+    if (!previousEmployee || !hasUsableTemporaryPassword(previousEmployee.temporaryPassword)) {
+      return employee;
+    }
+
+    return { ...employee, temporaryPassword: previousEmployee.temporaryPassword };
+  });
 };
 
 const EmployeeAvatarPreview = ({
@@ -380,6 +575,9 @@ const EmployeeAvatarPreview = ({
 
 export default function UsersPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [knownTempPasswords, setKnownTempPasswords] = useState<KnownTempPasswordMap>(() =>
+    readKnownTempPasswords()
+  );
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [form, setForm] = useState<EmployeeForm>(() => createEmptyForm(false));
   const [avatarDraft, setAvatarDraft] = useState<AvatarConfig>(() =>
@@ -409,14 +607,13 @@ export default function UsersPage() {
       }
 
       const normalizedEmployees = mapPayloadToEmployees(payload);
-
-      if (normalizedEmployees.length === 0) {
-        setEmployeesLoadError("Backend chưa trả danh sách tài khoản nhân viên/admin demo.");
-        setEmployees([]);
-        return;
-      }
-
-      setEmployees(normalizedEmployees);
+      setEmployees((previousEmployees) =>
+        mergeEmployeesKeepingKnownPasswords(
+          previousEmployees,
+          normalizedEmployees,
+          knownTempPasswords
+        )
+      );
       setEmployeesLoadError("");
     } catch {
       setEmployeesLoadError("Không thể kết nối API danh sách nhân viên.");
@@ -424,11 +621,15 @@ export default function UsersPage() {
     } finally {
       setIsLoadingEmployees(false);
     }
-  }, []);
+  }, [knownTempPasswords]);
 
   useEffect(() => {
     void loadEmployeesFromBackend();
   }, [loadEmployeesFromBackend]);
+
+  useEffect(() => {
+    persistKnownTempPasswords(knownTempPasswords);
+  }, [knownTempPasswords]);
 
   const handleDialogOpenChange = (open: boolean) => {
     setIsCreateDialogOpen(open);
@@ -482,7 +683,12 @@ export default function UsersPage() {
     return "";
   };
 
-  const handleCopyPassword = async (password: string) => {
+const handleCopyPassword = async (password: string) => {
+    if (!password) {
+      toast.warning("Chưa có dữ liệu mật khẩu để sao chép.");
+      return;
+    }
+
     try {
       await navigator.clipboard.writeText(password);
       toast.success("Đã sao chép mật khẩu tạm.");
@@ -541,6 +747,20 @@ export default function UsersPage() {
         temporaryPassword: payload.temporary_password,
         avatar,
       };
+
+      const employeePasswordKeys = createTempPasswordKeys({
+        id: newEmployee.id,
+        email: newEmployee.email,
+      });
+      setKnownTempPasswords((previous) => {
+        const next = { ...previous };
+
+        for (const key of employeePasswordKeys) {
+          next[key] = payload.temporary_password;
+        }
+
+        return next;
+      });
 
       setEmployees((prev) => [newEmployee, ...prev]);
       setEmployeesLoadError("");
@@ -757,20 +977,19 @@ export default function UsersPage() {
                 <TableHead>Gmail</TableHead>
                 <TableHead>Số điện thoại</TableHead>
                 <TableHead>Role</TableHead>
-                <TableHead>Mật khẩu tạm</TableHead>
                 <TableHead className="text-right">Thao tác</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoadingEmployees && employees.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-6 text-center text-muted-foreground">
-                    Đang tải danh sách nhân viên từ backend...
+                  <TableCell colSpan={6} className="py-6 text-center text-muted-foreground">
+                    Đang tải danh sách nhân viên ...
                   </TableCell>
                 </TableRow>
               ) : employees.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-6 text-center text-muted-foreground">
+                  <TableCell colSpan={6} className="py-6 text-center text-muted-foreground">
                     {employeesLoadError || "Chưa có nhân viên nào."}
                   </TableCell>
                 </TableRow>
@@ -790,18 +1009,6 @@ export default function UsersPage() {
                       <Badge variant={roleBadgeVariantMap[employee.role]}>
                         {roleLabelMap[employee.role]}
                       </Badge>
-                    </TableCell>
-                    <TableCell className="font-mono text-xs">
-                      {employee.temporaryPassword}
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => void handleCopyPassword(employee.temporaryPassword)}
-                        className="cursor-pointer border-none bg-transparent text-center"
-                      >
-                        <Copy className="size-3.5" />
-                      </Button>
                     </TableCell>
                     <TableCell className="text-right">
                       

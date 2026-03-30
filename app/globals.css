@@ -244,3 +244,15 @@ body::-webkit-scrollbar{
     @apply bg-background text-foreground;
   }
 }
+
+input.hide-native-password-reveal::-ms-reveal,
+input.hide-native-password-reveal::-ms-clear {
+  display: none;
+}
+
+input.hide-native-password-reveal::-webkit-credentials-auto-fill-button,
+input.hide-native-password-reveal::-webkit-contacts-auto-fill-button {
+  visibility: hidden;
+  display: none !important;
+  pointer-events: none;
+}

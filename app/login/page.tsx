@@ -24,12 +24,12 @@ import { toast } from "@/components/ui/toast";
 import { extractAuthToken, extractErrorMessage, extractRole } from "@/lib/auth";
 
 type LoginForm = {
-  username: string;
+  account: string;
   password: string;
 };
 
 const initialForm: LoginForm = {
-  username: "",
+  account: "",
   password: "",
 };
 
@@ -47,11 +47,14 @@ export default function LoginPage() {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    const username = form.username.trim();
+    const accountInput = form.account.trim();
+    const account = accountInput.includes("@")
+      ? accountInput.toLowerCase()
+      : accountInput;
     const password = form.password;
 
-    if (!username || !password) {
-      const message = "Vui lòng nhập đầy đủ tài khoản và mật khẩu.";
+    if (!account || !password) {
+      const message = "Vui lòng nhập đầy đủ tài khoản/Gmail và mật khẩu.";
       setError(message);
       toast.warning(message);
       return;
@@ -67,7 +70,7 @@ export default function LoginPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          username,
+          username: account,
           password,
         }),
       });
@@ -92,7 +95,7 @@ export default function LoginPage() {
       } else {
         localStorage.removeItem("auth_role");
       }
-      localStorage.setItem("auth_username", username);
+      localStorage.setItem("auth_username", account);
       toast.success("Đăng nhập thành công.");
 
       router.replace("/");
@@ -117,13 +120,14 @@ export default function LoginPage() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="username">Tài khoản</Label>
+              <Label htmlFor="account">Tài khoản hoặc Gmail</Label>
               <Input
-                id="username"
-                value={form.username}
+                id="account"
+                type="text"
+                value={form.account}
                 autoComplete="username"
-                placeholder="Nhập tài khoản"
-                onChange={(event) => handleChange("username", event.target.value)}
+                placeholder="Nhập tài khoản hoặc Gmail"
+                onChange={(event) => handleChange("account", event.target.value)}
               />
             </div>
 
@@ -133,6 +137,7 @@ export default function LoginPage() {
                 <InputGroupInput
                   id="password"
                   type={showPassword ? "text" : "password"}
+                  className="hide-native-password-reveal"
                   value={form.password}
                   autoComplete="current-password"
                   placeholder="Nhập mật khẩu"

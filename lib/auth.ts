@@ -130,14 +130,33 @@ export const extractErrorMessage = (payload: unknown) => {
     return "";
   }
 
-  const message = payload.message;
+  const messageCandidates = [payload.message, payload.detail, payload.error];
 
-  if (typeof message === "string") {
-    return message;
-  }
+  for (const candidate of messageCandidates) {
+    if (typeof candidate === "string") {
+      return candidate;
+    }
 
-  if (Array.isArray(message)) {
-    return message.filter((item) => typeof item === "string").join(", ");
+    if (Array.isArray(candidate)) {
+      const joinedMessages = candidate
+        .map((item) => {
+          if (typeof item === "string") {
+            return item;
+          }
+
+          if (isObject(item) && typeof item.msg === "string") {
+            return item.msg;
+          }
+
+          return "";
+        })
+        .filter(Boolean)
+        .join(", ");
+
+      if (joinedMessages) {
+        return joinedMessages;
+      }
+    }
   }
 
   return "";

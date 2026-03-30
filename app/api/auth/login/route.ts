@@ -81,76 +81,177 @@ const readPayload = async (response: Response) => {
   return text ? { message: text } : {};
 };
 
-const shouldFallbackToJson = (status: number) =>
-  status === 404 || status === 405 || status === 415 || status === 422;
+const shouldTryAlternativeFormat = (status: number) =>
+  status === 400 ||
+  status === 401 ||
+  status === 403 ||
+  status === 404 ||
+  status === 405 ||
+  status === 415 ||
+  status === 422;
+
+const normalizeLoginErrorMessage = (rawMessage: string, status: number) => {
+  const message = rawMessage.trim();
+  const normalizedMessage = message.toLowerCase();
+
+  const invalidCredentialPatterns = [
+    "không thể xác thực thông tin đăng nhập",
+    "khong the xac thuc thong tin dang nhap",
+    "sai mật khẩu",
+    "sai mat khau",
+    "tài khoản không tồn tại",
+    "tai khoan khong ton tai",
+    "invalid credentials",
+    "incorrect username or password",
+  ];
+
+  if (
+    status === 401 ||
+    invalidCredentialPatterns.some((pattern) => normalizedMessage.includes(pattern))
+  ) {
+    return "Tài khoản hoặc mật khẩu không đúng. Vui lòng thử lại.";
+  }
+
+  if (message) {
+    return message;
+  }
+
+  return "Đăng nhập thất bại. Vui lòng thử lại.";
+};
+
+type LoginRequestVariant = {
+  contentType: "application/x-www-form-urlencoded" | "application/json";
+  body: Record<string, string>;
+};
+
+const sendLoginRequest = async (
+  backendUrl: string,
+  variant: LoginRequestVariant
+) => {
+  const requestBody =
+    variant.contentType === "application/x-www-form-urlencoded"
+      ? new URLSearchParams(variant.body).toString()
+      : JSON.stringify(variant.body);
+
+  const response = await fetch(backendUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": variant.contentType,
+    },
+    body: requestBody,
+    cache: "no-store",
+  });
+
+  const payload = await readPayload(response);
+  return { response, payload };
+};
 
 const loginWithBackend = async (
   backendUrl: string,
   username: string,
   password: string
 ) => {
-  const formBody = new URLSearchParams();
-  formBody.set("username", username);
-  formBody.set("password", password);
-
-  const formResponse = await fetch(backendUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
+  const variants: LoginRequestVariant[] = [
+    {
+      contentType: "application/x-www-form-urlencoded",
+      body: { username, password },
     },
-    body: formBody.toString(),
-    cache: "no-store",
-  });
-  const formPayload = await readPayload(formResponse);
+    {
+      contentType: "application/json",
+      body: { username, password },
+    },
+    {
+      contentType: "application/x-www-form-urlencoded",
+      body: { email: username, password },
+    },
+    {
+      contentType: "application/json",
+      body: { email: username, password },
+    },
+    {
+      contentType: "application/x-www-form-urlencoded",
+      body: { account: username, password },
+    },
+    {
+      contentType: "application/json",
+      body: { account: username, password },
+    },
+    {
+      contentType: "application/x-www-form-urlencoded",
+      body: { tai_khoan: username, password },
+    },
+    {
+      contentType: "application/json",
+      body: { tai_khoan: username, password },
+    },
+  ];
 
-  if (formResponse.ok || !shouldFallbackToJson(formResponse.status)) {
-    return { response: formResponse, payload: formPayload };
+  let latestResult: Awaited<ReturnType<typeof sendLoginRequest>> = {
+    response: new Response(null, { status: 500 }),
+    payload: {},
+  };
+
+  for (const variant of variants) {
+    const result = await sendLoginRequest(backendUrl, variant);
+    latestResult = result;
+
+    if (result.response.ok) {
+      return result;
+    }
+
+    if (!shouldTryAlternativeFormat(result.response.status)) {
+      return result;
+    }
   }
 
-  const jsonResponse = await fetch(backendUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      username,
-      password,
-    }),
-    cache: "no-store",
-  });
-  const jsonPayload = await readPayload(jsonResponse);
-
-  return { response: jsonResponse, payload: jsonPayload };
+  return latestResult;
 };
 
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as {
+      email?: string;
       username?: string;
       password?: string;
     };
 
-    const username = body.username?.trim() ?? "";
+    const loginInput = body.username ?? body.email ?? "";
+    const trimmedIdentifier = loginInput.trim();
+    const isUsernameOnly = !trimmedIdentifier.includes("@");
+    const identifier = isUsernameOnly
+      ? trimmedIdentifier
+      : trimmedIdentifier.toLowerCase();
     const password = body.password ?? "";
 
-    if (!username || !password) {
+    if (!identifier || !password) {
       return NextResponse.json(
-        { message: "Vui lòng nhập tài khoản và mật khẩu." },
+        { message: "Vui lòng nhập tài khoản/Gmail và mật khẩu." },
         { status: 400 }
       );
     }
 
     const backendUrl = resolveBackendLoginUrl();
-    const { response: backendResponse, payload } = await loginWithBackend(
-      backendUrl,
-      username,
-      password
-    );
+    const fallbackUsername = identifier.split("@")[0]?.trim().toLowerCase() ?? "";
+    const shouldFallbackToUsername =
+      !isUsernameOnly && Boolean(fallbackUsername) && fallbackUsername !== identifier;
+
+    let loginResult = await loginWithBackend(backendUrl, identifier, password);
+
+    if (
+      !loginResult.response.ok &&
+      shouldFallbackToUsername &&
+      [400, 401, 403, 404, 422].includes(loginResult.response.status)
+    ) {
+      loginResult = await loginWithBackend(backendUrl, fallbackUsername, password);
+    }
+
+    const { response: backendResponse, payload } = loginResult;
 
     if (!backendResponse.ok) {
+      const rawErrorMessage = extractErrorMessage(payload);
       return NextResponse.json(
         {
-          message: extractErrorMessage(payload) || "Đăng nhập thất bại. Vui lòng thử lại.",
+          message: normalizeLoginErrorMessage(rawErrorMessage, backendResponse.status),
         },
         { status: backendResponse.status }
       );
