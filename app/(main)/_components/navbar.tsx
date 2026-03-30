@@ -1,11 +1,29 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
-import { Bell, ChevronLeft, ChevronRight, Moon, Search, Sun } from "lucide-react";
+import { useRouter } from "next/navigation";
+import {
+  Bell,
+  ChevronLeft,
+  ChevronRight,
+  LogOut,
+  Moon,
+  Search,
+  Sun,
+  UserCircle2,
+} from "lucide-react";
 import { useTheme } from "next-themes";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { useMounted } from "@/hooks/use-mounted";
 import { cn } from "@/lib/utils";
@@ -16,13 +34,42 @@ type NavbarProps = {
 };
 
 const Navbar = ({ isSidebarOpen, onToggleSidebar }: NavbarProps) => {
+  const router = useRouter();
   const { resolvedTheme, setTheme } = useTheme();
   const mounted = useMounted();
 
   const isDark = mounted && resolvedTheme === "dark";
+  const authName =
+    mounted && typeof window !== "undefined"
+      ? window.localStorage.getItem("auth_username") || "Admin"
+      : "Admin";
+  const authRole =
+    mounted && typeof window !== "undefined"
+      ? window.localStorage.getItem("auth_role") || "Admin"
+      : "Admin";
 
   const handleToggleTheme = () => {
     setTheme(isDark ? "light" : "dark");
+  };
+
+  const handleOpenProfile = () => {
+    router.push("/profile");
+  };
+
+  const handleLogout = async () => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch {
+      // Continue sign-out on client even if API call fails.
+    } finally {
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem("auth_token");
+        window.localStorage.removeItem("auth_role");
+        window.localStorage.removeItem("auth_username");
+      }
+      router.replace("/login");
+      router.refresh();
+    }
   };
 
   return (
@@ -38,7 +85,7 @@ const Navbar = ({ isSidebarOpen, onToggleSidebar }: NavbarProps) => {
           size="icon"
           className="cursor-pointer"
           onClick={onToggleSidebar}
-          aria-label={isSidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
+          aria-label={isSidebarOpen ? "Thu gọn thanh bên" : "Mở rộng thanh bên"}
         >
           {isSidebarOpen ? (
             <ChevronLeft className="size-4" />
@@ -49,15 +96,15 @@ const Navbar = ({ isSidebarOpen, onToggleSidebar }: NavbarProps) => {
 
         <div className="min-w-0 flex-1">
           <p className="text-xs uppercase tracking-widest text-muted-foreground">
-            Administrator
+            Quản trị viên
           </p>
-          <h2 className="truncate text-lg font-semibold">Dashboard Overview</h2>
+          <h2 className="truncate text-lg font-semibold">Tổng quan bảng điều khiển</h2>
         </div>
 
         <div className="hidden w-72 shrink-0 md:block">
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input placeholder="Search order, product, user..." className="pl-8" />
+            <Input placeholder="Tìm đơn hàng, sản phẩm, người dùng..." className="pl-8" />
           </div>
         </div>
 
@@ -66,33 +113,53 @@ const Navbar = ({ isSidebarOpen, onToggleSidebar }: NavbarProps) => {
           size="icon"
           className="cursor-pointer"
           onClick={handleToggleTheme}
-          aria-label="Toggle theme"
+          aria-label="Đổi giao diện sáng/tối"
         >
           {isDark ? <Sun className="size-4" /> : <Moon className="size-4" />}
         </Button>
 
-        <Button variant="outline" size="icon" aria-label="Notifications">
+        <Button variant="outline" size="icon" aria-label="Thông báo">
           <Bell className="size-4" />
         </Button>
 
-        <div className="hidden items-center gap-2 rounded-lg border border-border/70 bg-card px-2.5 py-1.5 md:flex">
-          <div className="size-7 rounded-full bg-primary/10" />
-          <div className="leading-tight">
-            <p className="text-xs font-medium">Admin</p>
-            <p className="text-[11px] text-muted-foreground">Super User</p>
-          </div>
-        </div>
-
-        <Badge variant="outline" className="hidden md:inline-flex">
-          Q1 Reports
-        </Badge>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="hidden cursor-pointer items-center gap-2 rounded-lg border border-border/70 bg-card px-2.5 py-1.5 text-left transition-colors hover:bg-muted md:flex"
+              aria-label="Mở menu tài khoản"
+            >
+              <div className="size-7 rounded-full bg-primary/10" />
+              <div className="leading-tight">
+                <p className="text-xs font-medium">{authName}</p>
+                <p className="text-[11px] text-muted-foreground">{authRole}</p>
+              </div>
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-52">
+            <DropdownMenuLabel>Tài khoản</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={handleOpenProfile} className="cursor-pointer">
+              <UserCircle2 className="size-4" />
+              Hồ sơ cá nhân
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={handleLogout}
+              className="cursor-pointer"
+            >
+              <LogOut className="size-4" />
+              Đăng xuất
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         <div className="flex items-center gap-2 md:hidden">
           <Link href="/" className="text-xs font-medium text-muted-foreground">
-            Home
+            Trang chủ
           </Link>
           <Link href="/settings" className="text-xs font-medium text-muted-foreground">
-            Settings
+            Cài đặt
           </Link>
         </div>
       </div>

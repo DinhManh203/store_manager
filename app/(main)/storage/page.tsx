@@ -221,9 +221,7 @@ export default function StoragePage() {
   return (
     <div className="space-y-6">
       <section>
-        <p className="text-xs uppercase tracking-widest text-muted-foreground">
-          Inventory
-        </p>
+        <p className="text-xs uppercase tracking-widest text-muted-foreground">Kho hàng</p>
         <h1 className="text-2xl font-semibold tracking-tight">Quản lý kho hàng</h1>
         <p className="text-sm text-muted-foreground">
           Theo dõi sản phẩm và cập nhật nhanh thông tin tồn kho.

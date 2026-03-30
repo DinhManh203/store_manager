@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { Laptop, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
@@ -11,43 +11,51 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
 import { useMounted } from "@/hooks/use-mounted";
+import { cn } from "@/lib/utils";
 
 const themeOptions = [
   {
     value: "light",
-    title: "Light",
-    description: "Bright UI for daytime operations",
+    title: "Sáng",
+    description: "Giao diện sáng, phù hợp khi làm việc ban ngày",
     icon: Sun,
   },
   {
     value: "dark",
-    title: "Dark",
-    description: "Reduced eye strain in low-light environments",
+    title: "Tối",
+    description: "Giảm mỏi mắt khi làm việc trong môi trường thiếu sáng",
     icon: Moon,
   },
   {
     value: "system",
-    title: "System",
-    description: "Follow operating system preference",
+    title: "Hệ thống",
+    description: "Tự động theo cài đặt sáng/tối của thiết bị",
     icon: Laptop,
   },
 ] as const;
+
+const themeLabelMap: Record<string, string> = {
+  light: "Sáng",
+  dark: "Tối",
+  system: "Hệ thống",
+};
 
 export default function SettingsPage() {
   const { theme, setTheme, resolvedTheme } = useTheme();
   const mounted = useMounted();
 
+  const currentThemeLabel = mounted
+    ? themeLabelMap[resolvedTheme ?? "system"] ?? "Hệ thống"
+    : "Đang tải";
+
   return (
     <div className="space-y-6">
       <div>
-        <p className="text-xs uppercase tracking-widest text-muted-foreground">
-          Preferences
-        </p>
-        <h1 className="text-2xl font-semibold tracking-tight">Interface Settings</h1>
+        <p className="text-xs uppercase tracking-widest text-muted-foreground">Tùy chọn</p>
+        <h1 className="text-2xl font-semibold tracking-tight">Cài đặt giao diện</h1>
         <p className="text-sm text-muted-foreground">
-          Control the dashboard appearance and behavior for administrators.
+          Tùy chỉnh giao diện và hành vi hiển thị của bảng điều khiển quản trị.
         </p>
       </div>
 
@@ -55,14 +63,10 @@ export default function SettingsPage() {
         <CardHeader className="border-b border-border/70">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <CardTitle>Color Theme</CardTitle>
-              <CardDescription>
-                Switch between Light, Dark, or System mode.
-              </CardDescription>
+              <CardTitle>Chế độ màu sắc</CardTitle>
+              <CardDescription>Chuyển đổi giữa Sáng, Tối hoặc Hệ thống.</CardDescription>
             </div>
-            <Badge variant="outline">
-              Current: {mounted ? resolvedTheme ?? "system" : "loading"}
-            </Badge>
+            <Badge variant="outline">Hiện tại: {currentThemeLabel}</Badge>
           </div>
         </CardHeader>
 

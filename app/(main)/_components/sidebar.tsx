@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 
 const navigationItems = [
   { label: "Bảng điều khiển", href: "/", icon: LayoutDashboard },
-  { label: "Quản lý kho", href:"/storage", icon: Store },
+  { label: "Quản lý kho", href: "/storage", icon: Store },
   { label: "Cài đặt", href: "/settings", icon: Settings },
 ];
 
@@ -30,13 +30,13 @@ const Sidebar = ({ isOpen }: SidebarProps) => {
       <div className="mb-8 flex items-center justify-between px-1">
         <div>
           <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
-            Admin Panel
+            Bảng quản trị
           </p>
-          <h1 className="text-xl font-semibold tracking-tight">Warehouse Ops</h1>
+          <h1 className="text-xl font-semibold tracking-tight">Vận hành kho</h1>
         </div>
         <Badge variant="secondary" className="gap-1.5">
           <ShieldCheck className="size-3.5" />
-          Secure
+          Bảo mật
         </Badge>
       </div>
 
@@ -66,11 +66,11 @@ const Sidebar = ({ isOpen }: SidebarProps) => {
 
       <div className="mt-auto rounded-xl border border-border/70 bg-muted/40 p-4">
         <p className="text-xs uppercase tracking-widest text-muted-foreground">
-          Today
+          Hôm nay
         </p>
-        <p className="mt-1 text-sm font-medium">12 pending approvals</p>
+        <p className="mt-1 text-sm font-medium">12 yêu cầu chờ duyệt</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          Inventory and purchase requests need admin review.
+          Yêu cầu tồn kho và mua hàng đang cần quản trị viên xem xét.
         </p>
       </div>
     </aside>

@@ -1,4 +1,4 @@
-import {
+﻿import {
   ArrowUpRight,
   Boxes,
   CircleAlert,
@@ -27,32 +27,32 @@ import {
 
 const stats = [
   {
-    title: "Total Revenue",
+    title: "Tổng doanh thu",
     value: "$128,450",
     delta: "+12.8%",
     icon: CreditCard,
-    hint: "Compared with last month",
+    hint: "So với tháng trước",
   },
   {
-    title: "Active Orders",
+    title: "Đơn hàng đang xử lý",
     value: "1,248",
     delta: "+9.2%",
     icon: PackageCheck,
-    hint: "54 need processing today",
+    hint: "54 đơn cần xử lý hôm nay",
   },
   {
-    title: "Inventory Units",
+    title: "Số lượng tồn kho",
     value: "24,980",
     delta: "-1.3%",
     icon: Boxes,
-    hint: "3 categories under threshold",
+    hint: "3 danh mục dưới ngưỡng an toàn",
   },
   {
-    title: "Active Staff",
+    title: "Nhân sự đang hoạt động",
     value: "72",
     delta: "+4",
     icon: Users,
-    hint: "2 pending access requests",
+    hint: "2 yêu cầu cấp quyền đang chờ",
   },
 ];
 
@@ -60,38 +60,42 @@ const activities = [
   {
     id: "PO-4921",
     actor: "Nguyen Thanh",
-    action: "Approved purchase order",
-    when: "3 mins ago",
+    action: "Đã duyệt đơn mua hàng",
+    when: "3 phút trước",
     status: "done",
+    statusLabel: "Hoàn tất",
   },
   {
     id: "INV-8844",
     actor: "Warehouse Bot",
-    action: "Auto sync inventory from branch B",
-    when: "11 mins ago",
+    action: "Tự động đồng bộ tồn kho từ chi nhánh B",
+    when: "11 phút trước",
     status: "done",
+    statusLabel: "Hoàn tất",
   },
   {
     id: "REQ-1022",
     actor: "Le Minh",
-    action: "Requested stock adjustment",
-    when: "28 mins ago",
+    action: "Yêu cầu điều chỉnh tồn kho",
+    when: "28 phút trước",
     status: "review",
+    statusLabel: "Chờ duyệt",
   },
   {
     id: "USR-338",
-    actor: "System",
-    action: "New admin account requires approval",
-    when: "49 mins ago",
+    actor: "Hệ thống",
+    action: "Có tài khoản admin mới cần phê duyệt",
+    when: "49 phút trước",
     status: "warning",
+    statusLabel: "Cảnh báo",
   },
 ];
 
 const health = [
-  { label: "API uptime", value: 99.94 },
-  { label: "Order processing", value: 92 },
-  { label: "Inventory sync", value: 88 },
-  { label: "Queue load", value: 61 },
+  { label: "Độ ổn định API", value: 99.94 },
+  { label: "Xử lý đơn hàng", value: 92 },
+  { label: "Đồng bộ tồn kho", value: 88 },
+  { label: "Tải hàng đợi", value: 61 },
 ];
 
 export default function DashboardPage() {
@@ -125,11 +129,11 @@ export default function DashboardPage() {
           <CardHeader className="border-b border-border/70">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <CardTitle>Recent Activities</CardTitle>
-                <CardDescription>Latest admin actions in the system</CardDescription>
+                <CardTitle>Hoạt động gần đây</CardTitle>
+                <CardDescription>Các thao tác quản trị mới nhất trên hệ thống</CardDescription>
               </div>
               <Button variant="outline" size="sm">
-                Export Log
+                Xuất nhật ký
                 <ArrowUpRight className="size-3.5" />
               </Button>
             </div>
@@ -138,11 +142,11 @@ export default function DashboardPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Ref ID</TableHead>
-                  <TableHead>Actor</TableHead>
-                  <TableHead>Action</TableHead>
-                  <TableHead>Time</TableHead>
-                  <TableHead className="text-right">Status</TableHead>
+                  <TableHead>Mã tham chiếu</TableHead>
+                  <TableHead>Người thực hiện</TableHead>
+                  <TableHead>Hành động</TableHead>
+                  <TableHead>Thời gian</TableHead>
+                  <TableHead className="text-right">Trạng thái</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -162,7 +166,7 @@ export default function DashboardPage() {
                               : "secondary"
                         }
                       >
-                        {row.status}
+                        {row.statusLabel}
                       </Badge>
                     </TableCell>
                   </TableRow>
@@ -174,8 +178,8 @@ export default function DashboardPage() {
 
         <Card className="border border-border/70">
           <CardHeader className="border-b border-border/70">
-            <CardTitle>System Health</CardTitle>
-            <CardDescription>Live service quality indicators</CardDescription>
+            <CardTitle>Sức khỏe hệ thống</CardTitle>
+            <CardDescription>Chỉ số chất lượng dịch vụ theo thời gian thực</CardDescription>
           </CardHeader>
           <CardContent className="space-y-5 pt-4">
             {health.map((item) => (
@@ -196,9 +200,9 @@ export default function DashboardPage() {
             <div className="rounded-lg border border-border/70 bg-muted/40 p-3 text-xs text-muted-foreground">
               <div className="mb-1 flex items-center gap-2 text-foreground">
                 <CircleAlert className="size-3.5" />
-                Sync Alert
+                Cảnh báo đồng bộ
               </div>
-              Branch C inventory sync is delayed by 7 minutes.
+              Đồng bộ tồn kho của chi nhánh C đang chậm 7 phút.
             </div>
           </CardContent>
         </Card>
