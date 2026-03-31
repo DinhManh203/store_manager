@@ -1,7 +1,8 @@
 ﻿"use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { Copy, Loader2, Plus, RefreshCw, Users } from "lucide-react";
+import { Copy, Eye, Loader2, Plus, RefreshCw, Users } from "lucide-react";
+import { useRouter } from "next/navigation";
 import {
   Accessories,
   Beards,
@@ -77,7 +78,15 @@ type EmployeeForm = {
   name: string;
   email: string;
   phone: string;
-  role: EmployeeRole | "";
+  role: EmployeeRole;
+  temporaryPassword: string;
+};
+
+type EmployeeEditForm = {
+  name: string;
+  email: string;
+  phone: string;
+  role: EmployeeRole;
   temporaryPassword: string;
 };
 
@@ -345,8 +354,16 @@ const createEmptyForm = (withRandomPassword = false): EmployeeForm => ({
   name: "",
   email: "",
   phone: "",
-  role: "",
+  role: "user",
   temporaryPassword: withRandomPassword ? generateRandomPassword() : "",
+});
+
+const createEditFormFromEmployee = (employee: Employee): EmployeeEditForm => ({
+  name: employee.name,
+  email: employee.email,
+  phone: employee.phone,
+  role: employee.role,
+  temporaryPassword: employee.temporaryPassword,
 });
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -574,19 +591,50 @@ const EmployeeAvatarPreview = ({
 );
 
 export default function UsersPage() {
+  const router = useRouter();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [knownTempPasswords, setKnownTempPasswords] = useState<KnownTempPasswordMap>(() =>
     readKnownTempPasswords()
   );
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
+  const [editForm, setEditForm] = useState<EmployeeEditForm | null>(null);
+  const [isEditingTemporaryPassword, setIsEditingTemporaryPassword] = useState(false);
   const [form, setForm] = useState<EmployeeForm>(() => createEmptyForm(false));
   const [avatarDraft, setAvatarDraft] = useState<AvatarConfig>(() =>
     createAvatarFromSeed("initial-avatar-draft")
   );
   const [error, setError] = useState("");
+  const [detailError, setDetailError] = useState("");
   const [isCreatingEmployee, setIsCreatingEmployee] = useState(false);
+  const [isSavingEmployeeDetail, setIsSavingEmployeeDetail] = useState(false);
   const [isLoadingEmployees, setIsLoadingEmployees] = useState(false);
   const [employeesLoadError, setEmployeesLoadError] = useState("");
+
+  const handleSessionExpired = useCallback(
+    async (message?: string) => {
+      const sessionMessage =
+        message?.trim() || "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.";
+
+      toast.warning(sessionMessage);
+
+      try {
+        await fetch("/api/auth/logout", { method: "POST" });
+      } catch {
+        // Continue sign-out on client even if API call fails.
+      }
+
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem("auth_token");
+        window.localStorage.removeItem("auth_role");
+        window.localStorage.removeItem("auth_username");
+      }
+
+      router.replace("/login");
+      router.refresh();
+    },
+    [router]
+  );
 
   const loadEmployeesFromBackend = useCallback(async () => {
     setIsLoadingEmployees(true);
@@ -599,6 +647,13 @@ export default function UsersPage() {
       const payload = await response.json().catch(() => ({}));
 
       if (!response.ok) {
+        if (response.status === 401) {
+          await handleSessionExpired(extractErrorMessage(payload));
+          setEmployees([]);
+          setEmployeesLoadError("Phiên đăng nhập đã hết hạn.");
+          return;
+        }
+
         const message =
           extractErrorMessage(payload) || "Không thể tải danh sách nhân viên từ backend.";
         setEmployeesLoadError(message);
@@ -621,7 +676,7 @@ export default function UsersPage() {
     } finally {
       setIsLoadingEmployees(false);
     }
-  }, [knownTempPasswords]);
+  }, [handleSessionExpired, knownTempPasswords]);
 
   useEffect(() => {
     void loadEmployeesFromBackend();
@@ -653,10 +708,9 @@ export default function UsersPage() {
     const name = form.name.trim();
     const email = form.email.trim().toLowerCase();
     const phone = form.phone.trim();
-    const role = form.role;
     const temporaryPassword = form.temporaryPassword.trim();
 
-    if (!name || !email || !phone || !role || !temporaryPassword) {
+    if (!name || !email || !phone || !temporaryPassword) {
       return "Vui lòng nhập đầy đủ thông tin nhân viên.";
     }
 
@@ -683,7 +737,7 @@ export default function UsersPage() {
     return "";
   };
 
-const handleCopyPassword = async (password: string) => {
+  const handleCopyPassword = async (password: string) => {
     if (!password) {
       toast.warning("Chưa có dữ liệu mật khẩu để sao chép.");
       return;
@@ -694,6 +748,198 @@ const handleCopyPassword = async (password: string) => {
       toast.success("Đã sao chép mật khẩu tạm.");
     } catch {
       toast.error("Không thể sao chép. Vui lòng copy thủ công.");
+    }
+  };
+
+  const handleOpenEmployeeDetail = (employee: Employee) => {
+    setSelectedEmployee(employee);
+    setEditForm(createEditFormFromEmployee(employee));
+    setIsEditingTemporaryPassword(false);
+    setDetailError("");
+  };
+
+  const handleEditFieldChange = (
+    field: keyof EmployeeEditForm,
+    value: string
+  ) => {
+    if (field === "temporaryPassword") {
+      setIsEditingTemporaryPassword(true);
+    }
+
+    setEditForm((previous) => {
+      if (!previous) {
+        return previous;
+      }
+
+      return {
+        ...previous,
+        [field]: value,
+      };
+    });
+  };
+
+  const validateEditForm = (
+    targetEmployeeId: string,
+    shouldUpdateTemporaryPassword: boolean
+  ) => {
+    if (!editForm) {
+      return "Không có dữ liệu để cập nhật.";
+    }
+
+    const name = editForm.name.trim();
+    const email = editForm.email.trim().toLowerCase();
+    const phone = editForm.phone.trim();
+    const temporaryPassword = editForm.temporaryPassword.trim();
+
+    if (!name || !email || !phone) {
+      return "Vui lòng nhập đầy đủ tên, email và số điện thoại.";
+    }
+
+    if (!EMAIL_PATTERN.test(email)) {
+      return "Email chưa đúng định dạng.";
+    }
+
+    if (!PHONE_PATTERN.test(phone)) {
+      return "Số điện thoại chỉ gồm số và phải dài từ 9 đến 15 ký tự.";
+    }
+
+    if (shouldUpdateTemporaryPassword && temporaryPassword.length < 8) {
+      return "Mật khẩu cần tối thiểu 8 ký tự.";
+    }
+
+    const duplicatedEmail = employees.some(
+      (employee) =>
+        employee.id !== targetEmployeeId && employee.email.toLowerCase() === email
+    );
+
+    if (duplicatedEmail) {
+      return "Email nhân viên đã tồn tại.";
+    }
+
+    return "";
+  };
+
+  const handleSaveEmployeeDetail = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!selectedEmployee || !editForm) {
+      setDetailError("Không tìm thấy nhân viên cần chỉnh sửa.");
+      return;
+    }
+
+    const nextTemporaryPasswordInput = editForm.temporaryPassword.trim();
+    const shouldUpdateTemporaryPassword =
+      isEditingTemporaryPassword && Boolean(nextTemporaryPasswordInput);
+    const validationError = validateEditForm(
+      selectedEmployee.id,
+      shouldUpdateTemporaryPassword
+    );
+    if (validationError) {
+      setDetailError(validationError);
+      return;
+    }
+
+    setIsSavingEmployeeDetail(true);
+    const normalizedPayload = {
+      user_id: selectedEmployee.id,
+      full_name: editForm.name.trim(),
+      email: editForm.email.trim().toLowerCase(),
+      phone: editForm.phone.trim(),
+      role: editForm.role,
+      temporary_password: shouldUpdateTemporaryPassword
+        ? nextTemporaryPasswordInput
+        : undefined,
+    };
+
+    try {
+      const response = await fetch("/api/employees", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(normalizedPayload),
+      });
+      const responsePayload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          await handleSessionExpired(extractErrorMessage(responsePayload));
+          return;
+        }
+
+        const message =
+          extractErrorMessage(responsePayload) ||
+          "Không thể cập nhật nhân viên. Vui lòng kiểm tra lại dữ liệu.";
+        setDetailError(message);
+        toast.error(message);
+        return;
+      }
+
+      const data = isObject(responsePayload) ? responsePayload : {};
+      const nextTemporaryPassword = shouldUpdateTemporaryPassword
+        ? nextTemporaryPasswordInput
+        : selectedEmployee.temporaryPassword;
+      const nextEmployee: Employee = {
+        ...selectedEmployee,
+        id: readString(data.id) || selectedEmployee.id,
+        name:
+          readString(data.full_name) ||
+          readString(data.name) ||
+          normalizedPayload.full_name,
+        email: (
+          readString(data.email) ||
+          readString(data.gmail) ||
+          normalizedPayload.email
+        ).toLowerCase(),
+        phone: readString(data.phone) || normalizedPayload.phone,
+        role: toEmployeeRole(readString(data.role), normalizedPayload.role),
+        temporaryPassword: nextTemporaryPassword,
+      };
+
+      setEmployees((previousEmployees) =>
+        previousEmployees.map((employee) =>
+          employee.id === selectedEmployee.id ? nextEmployee : employee
+        )
+      );
+
+      setKnownTempPasswords((previousKnownPasswords) => {
+        const nextKnownPasswords = { ...previousKnownPasswords };
+        const previousKeys = createTempPasswordKeys({
+          id: selectedEmployee.id,
+          email: selectedEmployee.email,
+        });
+        const nextKeys = createTempPasswordKeys({
+          id: nextEmployee.id,
+          email: nextEmployee.email,
+        });
+
+        for (const key of previousKeys) {
+          delete nextKnownPasswords[key];
+        }
+
+        if (hasUsableTemporaryPassword(nextEmployee.temporaryPassword)) {
+          for (const key of nextKeys) {
+            nextKnownPasswords[key] = nextEmployee.temporaryPassword;
+          }
+        }
+
+        return nextKnownPasswords;
+      });
+
+      setDetailError("");
+      setSelectedEmployee(null);
+      setEditForm(null);
+      setIsEditingTemporaryPassword(false);
+
+      toast.success("Đã lưu chỉnh sửa người dùng.", {
+        description: `${nextEmployee.name} - ${nextEmployee.email}`,
+      });
+    } catch {
+      const message = "Không thể kết nối API cập nhật nhân viên.";
+      setDetailError(message);
+      toast.error(message);
+    } finally {
+      setIsSavingEmployeeDetail(false);
     }
   };
 
@@ -710,7 +956,7 @@ const handleCopyPassword = async (password: string) => {
       full_name: form.name.trim(),
       email: form.email.trim().toLowerCase(),
       phone: form.phone.trim(),
-      role: form.role as EmployeeRole,
+      role: "user" as EmployeeRole,
       temporary_password: form.temporaryPassword.trim(),
     };
     const avatar = avatarDraft;
@@ -729,6 +975,11 @@ const handleCopyPassword = async (password: string) => {
       const responsePayload = await response.json().catch(() => ({}));
 
       if (!response.ok) {
+        if (response.status === 401) {
+          await handleSessionExpired(extractErrorMessage(responsePayload));
+          return;
+        }
+
         const message =
           extractErrorMessage(responsePayload) || "Không thể tạo nhân viên. Vui lòng thử lại.";
         setError(message);
@@ -783,6 +1034,15 @@ const handleCopyPassword = async (password: string) => {
     }
   };
 
+  const handleDetailDialogOpenChange = (open: boolean) => {
+    if (!open) {
+      setSelectedEmployee(null);
+      setEditForm(null);
+      setIsEditingTemporaryPassword(false);
+      setDetailError("");
+    }
+  };
+
   return (
     <div className="space-y-6">
       <section>
@@ -799,7 +1059,7 @@ const handleCopyPassword = async (password: string) => {
             <div>
               <CardTitle>Danh sách nhân viên</CardTitle>
               <CardDescription>
-                Tạo nhanh tài khoản nhân viên với role và mật khẩu tạm ngẫu nhiên.
+                Tạo nhanh tài khoản nhân viên với vai trò mặc định là Nhân viên.
               </CardDescription>
             </div>
 
@@ -817,7 +1077,10 @@ const handleCopyPassword = async (password: string) => {
                   </Button>
                 </DialogTrigger>
 
-                <DialogContent className="sm:max-w-xl">
+                <DialogContent
+                  className="sm:max-w-xl"
+                  onInteractOutside={(event) => event.preventDefault()}
+                >
                   <DialogHeader>
                     <DialogTitle>Tạo tài khoản nhân viên</DialogTitle>
                     <DialogDescription>
@@ -859,22 +1122,13 @@ const handleCopyPassword = async (password: string) => {
                       </div>
 
                       <div className="space-y-2">
-                        <Label htmlFor="employee-role">Role</Label>
-                        <Select
-                          value={form.role}
-                          onValueChange={(value) => handleFieldChange("role", value)}
-                        >
-                          <SelectTrigger id="employee-role" className="w-full">
-                            <SelectValue placeholder="Chọn role" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {roleOptions.map((option) => (
-                              <SelectItem key={option.value} value={option.value}>
-                                {option.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <Label htmlFor="employee-role">Vai trò</Label>
+                        <Input
+                          id="employee-role"
+                          value={roleLabelMap.user}
+                          disabled
+                          readOnly
+                        />
                       </div>
 
                       <div className="space-y-2 sm:col-span-2">
@@ -905,8 +1159,9 @@ const handleCopyPassword = async (password: string) => {
                         <div className="flex flex-col gap-2 sm:flex-row">
                           <Input
                             id="employee-password"
+                            type="password"
                             value={form.temporaryPassword}
-                            className="font-mono"
+                            className="hide-native-password-reveal font-mono"
                             onChange={(event) =>
                               handleFieldChange("temporaryPassword", event.target.value)
                             }
@@ -968,58 +1223,239 @@ const handleCopyPassword = async (password: string) => {
           </div>
         </CardHeader>
 
-        <CardContent className="pt-3">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Ảnh đại diện</TableHead>
-                <TableHead>Tên nhân viên</TableHead>
-                <TableHead>Gmail</TableHead>
-                <TableHead>Số điện thoại</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead className="text-right">Thao tác</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoadingEmployees && employees.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="py-6 text-center text-muted-foreground">
-                    Đang tải danh sách nhân viên ...
-                  </TableCell>
+        <CardContent className="pt-4">
+          <div className="overflow-hidden rounded-2xl border border-border/70 bg-background">
+            <Table className="min-w-[980px] table-fixed">
+              <TableHeader className="bg-muted/35">
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="w-36 px-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Ảnh đại diện
+                  </TableHead>
+                  <TableHead className="w-56 px-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Tên nhân viên
+                  </TableHead>
+                  <TableHead className="px-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Gmail
+                  </TableHead>
+                  <TableHead className="w-44 px-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Số điện thoại
+                  </TableHead>
+                  <TableHead className="w-36 px-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Vai trò
+                  </TableHead>
+                  <TableHead className="w-32 px-4 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Thao tác
+                  </TableHead>
                 </TableRow>
-              ) : employees.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="py-6 text-center text-muted-foreground">
-                    {employeesLoadError || "Chưa có nhân viên nào."}
-                  </TableCell>
-                </TableRow>
-              ) : (
-                employees.map((employee) => (
-                  <TableRow key={employee.id}>
-                    <TableCell>
-                      <EmployeeAvatarPreview
-                        avatar={employee.avatar}
-                        name={`Avatar của ${employee.name}`}
-                      />
-                    </TableCell>
-                    <TableCell className="font-medium">{employee.name}</TableCell>
-                    <TableCell>{employee.email}</TableCell>
-                    <TableCell>{employee.phone}</TableCell>
-                    <TableCell>
-                      <Badge variant={roleBadgeVariantMap[employee.role]}>
-                        {roleLabelMap[employee.role]}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      
+              </TableHeader>
+              <TableBody className="[&_tr:last-child]:border-b-0">
+                {isLoadingEmployees && employees.length === 0 ? (
+                  <TableRow className="hover:bg-transparent">
+                    <TableCell colSpan={6} className="px-4 py-10 text-center text-muted-foreground">
+                      Đang tải danh sách nhân viên...
                     </TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                ) : employees.length === 0 ? (
+                  <TableRow className="hover:bg-transparent">
+                    <TableCell colSpan={6} className="px-4 py-10 text-center text-muted-foreground">
+                      {employeesLoadError || "Chưa có nhân viên nào."}
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  employees.map((employee) => (
+                    <TableRow
+                      key={employee.id}
+                      className="border-b border-border/60 odd:bg-background even:bg-muted/15 hover:bg-accent/25"
+                    >
+                      <TableCell className="px-4 py-3">
+                        <EmployeeAvatarPreview
+                          avatar={employee.avatar}
+                          name={`Avatar của ${employee.name}`}
+                        />
+                      </TableCell>
+                      <TableCell className="px-4 py-3">
+                        <div className="min-w-0">
+                          <p className="truncate font-semibold">{employee.name}</p>
+                          <p className="truncate text-xs text-muted-foreground">
+                            ID: {employee.id}
+                          </p>
+                        </div>
+                      </TableCell>
+                      <TableCell className="px-4 py-3">
+                        <p className="max-w-[24rem] truncate">{employee.email}</p>
+                      </TableCell>
+                      <TableCell className="px-4 py-3 font-medium">{employee.phone}</TableCell>
+                      <TableCell className="px-4 py-3">
+                        <Badge
+                          variant={roleBadgeVariantMap[employee.role]}
+                          className="rounded-md px-2 py-0.5"
+                        >
+                          {roleLabelMap[employee.role]}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="px-4 py-3 text-right">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="cursor-pointer rounded-md border-border/80 bg-background/70 hover:bg-accent"
+                          onClick={() => handleOpenEmployeeDetail(employee)}
+                        >
+                          <Eye className="size-3.5" />
+                          Chi tiết
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
+
+      <Dialog
+        open={Boolean(selectedEmployee)}
+        onOpenChange={handleDetailDialogOpenChange}
+      >
+        <DialogContent
+          className="sm:max-w-lg"
+          onInteractOutside={(event) => event.preventDefault()}
+        >
+          <DialogHeader>
+            <DialogTitle>Chi tiết người dùng</DialogTitle>
+            <DialogDescription>
+              Xem thông tin tài khoản và quyền của người dùng đã chọn.
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedEmployee && editForm ? (
+            <form onSubmit={handleSaveEmployeeDetail} className="space-y-4">
+              <div className="flex items-center gap-3 rounded-lg border border-border/70 p-3">
+                <EmployeeAvatarPreview
+                  avatar={selectedEmployee.avatar}
+                  name={`Avatar của ${selectedEmployee.name}`}
+                />
+                <div className="space-y-1">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                    Mã người dùng
+                  </p>
+                  <p className="text-sm font-medium">{selectedEmployee.id}</p>
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor="detail-name">Tên nhân viên</Label>
+                  <Input
+                    id="detail-name"
+                    value={editForm.name}
+                    onChange={(event) => handleEditFieldChange("name", event.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="detail-email">Gmail</Label>
+                  <Input
+                    id="detail-email"
+                    type="email"
+                    value={editForm.email}
+                    onChange={(event) => handleEditFieldChange("email", event.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="detail-phone">Số điện thoại</Label>
+                  <Input
+                    id="detail-phone"
+                    value={editForm.phone}
+                    onChange={(event) => handleEditFieldChange("phone", event.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="detail-role">Vai trò</Label>
+                  <Select
+                    value={editForm.role}
+                    onValueChange={(value) => handleEditFieldChange("role", value)}
+                  >
+                    <SelectTrigger id="detail-role" className="h-10 w-full rounded-lg">
+                      <SelectValue placeholder="Chọn vai trò" />
+                    </SelectTrigger>
+                    <SelectContent
+                      position="popper"
+                      align="start"
+                      sideOffset={2}
+                      className="w-[var(--radix-select-trigger-width)] min-w-[var(--radix-select-trigger-width)] rounded-xl p-1 data-[side=bottom]:translate-y-0"
+                    >
+                      {roleOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="detail-password">Mật khẩu</Label>
+                  <div className="relative">
+                    <Input
+                      id="detail-password"
+                      type="password"
+                      value={editForm.temporaryPassword}
+                      className="hide-native-password-reveal pr-11 font-mono"
+                      onChange={(event) =>
+                        handleEditFieldChange("temporaryPassword", event.target.value)
+                      }
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      className="absolute top-1/2 right-1.5 -translate-y-1/2"
+                      disabled={!editForm.temporaryPassword.trim()}
+                      onClick={() => void handleCopyPassword(editForm.temporaryPassword)}
+                      aria-label="Copy mật khẩu"
+                      title="Copy mật khẩu"
+                    >
+                      <Copy className="size-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {detailError && <p className="text-sm text-destructive">{detailError}</p>}
+
+              <div className="flex justify-end gap-2 border-t border-border/70 pt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="cursor-pointer"
+                  disabled={isSavingEmployeeDetail}
+                  onClick={() => handleDetailDialogOpenChange(false)}
+                >
+                  Hủy
+                </Button>
+                <Button
+                  type="submit"
+                  className="cursor-pointer"
+                  disabled={isSavingEmployeeDetail}
+                >
+                  {isSavingEmployeeDetail ? (
+                    <>
+                      <Loader2 className="size-4 animate-spin" />
+                      Đang lưu...
+                    </>
+                  ) : (
+                    "Lưu chỉnh sửa"
+                  )}
+                </Button>
+              </div>
+            </form>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

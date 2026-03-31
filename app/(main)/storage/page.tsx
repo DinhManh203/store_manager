@@ -1,8 +1,17 @@
 ﻿"use client";
 
-import { FormEvent, useMemo, useState } from "react";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import {
+  ChangeEvent,
+  FormEvent,
+  MouseEvent as ReactMouseEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { ImagePlus, Pencil, Plus, Trash2 } from "lucide-react";
 
+import { extractErrorMessage } from "@/lib/auth";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,6 +21,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
   Table,
@@ -25,6 +41,7 @@ import {
 type Product = {
   id: string;
   name: string;
+  imageUrl: string;
   sku: string;
   category: string;
   quantity: number;
@@ -33,41 +50,23 @@ type Product = {
 
 type ProductForm = {
   name: string;
+  imageUrl: string;
   sku: string;
   category: string;
   quantity: string;
   price: string;
 };
 
-const initialProducts: Product[] = [
-  {
-    id: "p-1",
-    name: "Bàn phím cơ K87",
-    sku: "KB-K87",
-    category: "Phụ kiện",
-    quantity: 24,
-    price: 890000,
-  },
-  {
-    id: "p-2",
-    name: "Chuột không dây M550",
-    sku: "MS-M550",
-    category: "Phụ kiện",
-    quantity: 8,
-    price: 420000,
-  },
-  {
-    id: "p-3",
-    name: "Màn hình 24 inch IPS",
-    sku: "MN-24IPS",
-    category: "Thiết bị",
-    quantity: 5,
-    price: 2750000,
-  },
-];
+type HoverPreview = {
+  src: string;
+  name: string;
+  x: number;
+  y: number;
+};
 
 const emptyForm: ProductForm = {
   name: "",
+  imageUrl: "",
   sku: "",
   category: "",
   quantity: "",
@@ -93,11 +92,77 @@ const getStockBadge = (quantity: number) => {
   return { label: "Ổn định", variant: "secondary" as const };
 };
 
+const getProductInitials = (name: string) => {
+  const initials = name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((word) => word[0]?.toUpperCase() ?? "")
+    .join("");
+
+  return initials || "SP";
+};
+
+const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
+const HOVER_PREVIEW_WIDTH = 360;
+const HOVER_PREVIEW_HEIGHT = 320;
+const HOVER_PREVIEW_PADDING = 16;
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+const readString = (value: unknown) => (typeof value === "string" ? value : "");
+
+const readNumber = (value: unknown) => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  return 0;
+};
+
+const normalizeProductPayload = (payload: unknown): Product | null => {
+  if (!isObject(payload)) {
+    return null;
+  }
+
+  const id = readString(payload.id).trim();
+  const name = readString(payload.name).trim();
+  if (!id || !name) {
+    return null;
+  }
+
+  return {
+    id,
+    name,
+    sku: readString(payload.sku).trim(),
+    category: readString(payload.category).trim() || "Khác",
+    quantity: Math.max(0, Math.trunc(readNumber(payload.quantity))),
+    price: readNumber(payload.price),
+    imageUrl: readString(payload.imageUrl).trim(),
+  };
+};
+
 export default function StoragePage() {
-  const [products, setProducts] = useState<Product[]>(initialProducts);
+  const [products, setProducts] = useState<Product[]>([]);
   const [form, setForm] = useState<ProductForm>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isProductDialogOpen, setIsProductDialogOpen] = useState(false);
+  const [imageFileName, setImageFileName] = useState("");
+  const [hoverPreview, setHoverPreview] = useState<HoverPreview | null>(null);
+  const [isLoadingProducts, setIsLoadingProducts] = useState(true);
+  const [isSubmittingProduct, setIsSubmittingProduct] = useState(false);
+  const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
+  const [productsLoadError, setProductsLoadError] = useState("");
   const [error, setError] = useState("");
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
 
   const totalQuantity = useMemo(
     () => products.reduce((sum, product) => sum + product.quantity, 0),
@@ -113,6 +178,43 @@ export default function StoragePage() {
     [products]
   );
 
+  const loadProductsFromApi = async () => {
+    setIsLoadingProducts(true);
+
+    try {
+      const response = await fetch("/api/products", {
+        method: "GET",
+        cache: "no-store",
+      });
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        const message =
+          extractErrorMessage(payload) || "Không thể tải danh sách sản phẩm từ API.";
+        setProductsLoadError(message);
+        return;
+      }
+
+      const nextProducts = Array.isArray(payload)
+        ? payload
+            .map((item) => normalizeProductPayload(item))
+            .filter((item): item is Product => item !== null)
+        : [];
+
+      setProducts(nextProducts);
+      setHoverPreview(null);
+      setProductsLoadError("");
+    } catch {
+      setProductsLoadError("Không thể kết nối API danh sách sản phẩm.");
+    } finally {
+      setIsLoadingProducts(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadProductsFromApi();
+  }, []);
+
   const handleChange = (field: keyof ProductForm, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
@@ -120,7 +222,92 @@ export default function StoragePage() {
   const resetForm = () => {
     setForm(emptyForm);
     setEditingId(null);
+    setImageFileName("");
     setError("");
+    if (imageInputRef.current) {
+      imageInputRef.current.value = "";
+    }
+  };
+
+  const handleImageUpload = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      setError("Vui lòng chọn file hình ảnh hợp lệ.");
+      event.target.value = "";
+      return;
+    }
+
+    if (file.size > MAX_IMAGE_SIZE_BYTES) {
+      setError("Kích thước ảnh tối đa là 5MB.");
+      event.target.value = "";
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result !== "string") {
+        setError("Không thể đọc file ảnh, vui lòng thử lại.");
+        return;
+      }
+
+      handleChange("imageUrl", reader.result);
+      setImageFileName(file.name);
+      setError("");
+    };
+    reader.onerror = () => {
+      setError("Không thể đọc file ảnh, vui lòng thử lại.");
+    };
+
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveImage = () => {
+    handleChange("imageUrl", "");
+    setImageFileName("");
+    if (imageInputRef.current) {
+      imageInputRef.current.value = "";
+    }
+  };
+
+  const handleHoverPreview = (
+    event: ReactMouseEvent<HTMLDivElement>,
+    product: Product
+  ) => {
+    if (!product.imageUrl) {
+      return;
+    }
+
+    let x = event.clientX + 20;
+    let y = event.clientY - HOVER_PREVIEW_HEIGHT / 2;
+
+    if (typeof window !== "undefined") {
+      const maxX = window.innerWidth - HOVER_PREVIEW_WIDTH - HOVER_PREVIEW_PADDING;
+      const maxY = window.innerHeight - HOVER_PREVIEW_HEIGHT - HOVER_PREVIEW_PADDING;
+
+      x = Math.min(
+        Math.max(x, HOVER_PREVIEW_PADDING),
+        Math.max(HOVER_PREVIEW_PADDING, maxX)
+      );
+      y = Math.min(
+        Math.max(y, HOVER_PREVIEW_PADDING),
+        Math.max(HOVER_PREVIEW_PADDING, maxY)
+      );
+    }
+
+    setHoverPreview({
+      src: product.imageUrl,
+      name: product.name,
+      x,
+      y,
+    });
+  };
+
+  const clearHoverPreview = () => {
+    setHoverPreview(null);
   };
 
   const validateForm = () => {
@@ -144,6 +331,7 @@ export default function StoragePage() {
     const duplicatedSku = products.some(
       (product) =>
         product.id !== editingId &&
+        Boolean(product.sku.trim()) &&
         product.sku.toLowerCase() === sku.toLowerCase()
     );
 
@@ -154,7 +342,7 @@ export default function StoragePage() {
     return "";
   };
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     const validationError = validateForm();
@@ -165,44 +353,93 @@ export default function StoragePage() {
 
     const payload = {
       name: form.name.trim(),
+      imageUrl: form.imageUrl.trim(),
       sku: form.sku.trim().toUpperCase(),
       category: form.category.trim() || "Khác",
       quantity: Number(form.quantity),
       price: Number(form.price),
     };
 
-    if (editingId) {
-      setProducts((prev) =>
-        prev.map((product) =>
-          product.id === editingId ? { ...product, ...payload } : product
-        )
-      );
+    setError("");
+    setIsSubmittingProduct(true);
+
+    try {
+      const response = await fetch("/api/products", {
+        method: editingId ? "PUT" : "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(editingId ? { ...payload, id: editingId } : payload),
+      });
+      const responsePayload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        const message =
+          extractErrorMessage(responsePayload) ||
+          (editingId
+            ? "Không thể cập nhật sản phẩm qua API."
+            : "Không thể thêm sản phẩm qua API.");
+        setError(message);
+        return;
+      }
+
+      const normalizedProduct = normalizeProductPayload(responsePayload);
+      if (normalizedProduct) {
+        if (editingId) {
+          setProducts((prev) =>
+            prev.map((product) => (product.id === editingId ? normalizedProduct : product))
+          );
+        } else {
+          setProducts((prev) => [normalizedProduct, ...prev]);
+        }
+      } else {
+        await loadProductsFromApi();
+      }
+
+      setProductsLoadError("");
       resetForm();
-      return;
+      setIsProductDialogOpen(false);
+    } catch {
+      setError(
+        editingId
+          ? "Không thể kết nối API cập nhật sản phẩm."
+          : "Không thể kết nối API thêm sản phẩm."
+      );
+    } finally {
+      setIsSubmittingProduct(false);
     }
-
-    const newProduct: Product = {
-      id: `${Date.now()}`,
-      ...payload,
-    };
-
-    setProducts((prev) => [newProduct, ...prev]);
-    resetForm();
   };
 
   const handleEdit = (product: Product) => {
+    const currentImageName = product.imageUrl
+      ? product.imageUrl.startsWith("data:")
+        ? "Ảnh đã tải lên"
+        : product.imageUrl.split("/").pop()?.split("?")[0] ?? "Ảnh hiện tại"
+      : "";
+
     setForm({
       name: product.name,
+      imageUrl: product.imageUrl,
       sku: product.sku,
       category: product.category,
       quantity: String(product.quantity),
       price: String(product.price),
     });
+    setImageFileName(currentImageName);
+    if (imageInputRef.current) {
+      imageInputRef.current.value = "";
+    }
     setEditingId(product.id);
     setError("");
+    setIsProductDialogOpen(true);
   };
 
-  const handleDelete = (product: Product) => {
+  const handleOpenCreateProductDialog = () => {
+    resetForm();
+    setIsProductDialogOpen(true);
+  };
+
+  const handleDelete = async (product: Product) => {
     const isAccepted = window.confirm(
       `Bạn có chắc muốn xóa sản phẩm "${product.name}"?`
     );
@@ -211,7 +448,30 @@ export default function StoragePage() {
       return;
     }
 
-    setProducts((prev) => prev.filter((item) => item.id !== product.id));
+    setDeletingProductId(product.id);
+
+    try {
+      const response = await fetch(`/api/products?id=${encodeURIComponent(product.id)}`, {
+        method: "DELETE",
+      });
+      const responsePayload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        const message =
+          extractErrorMessage(responsePayload) || "Không thể xóa sản phẩm qua API.";
+        window.alert(message);
+        return;
+      }
+
+      setProducts((prev) => prev.filter((item) => item.id !== product.id));
+      clearHoverPreview();
+      setProductsLoadError("");
+    } catch {
+      window.alert("Không thể kết nối API xóa sản phẩm.");
+      return;
+    } finally {
+      setDeletingProductId(null);
+    }
 
     if (editingId === product.id) {
       resetForm();
@@ -251,77 +511,30 @@ export default function StoragePage() {
 
       <Card className="border border-border/70">
         <CardHeader className="border-b border-border/70">
-          <CardTitle>
-            {editingId ? "Cập nhật sản phẩm" : "Thêm sản phẩm mới"}
-          </CardTitle>
-          <CardDescription>
-            Nhập thông tin cơ bản để quản lý hàng trong kho.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="pt-4">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-              <Input
-                placeholder="Tên sản phẩm"
-                value={form.name}
-                onChange={(event) => handleChange("name", event.target.value)}
-              />
-              <Input
-                placeholder="SKU"
-                value={form.sku}
-                onChange={(event) => handleChange("sku", event.target.value)}
-              />
-              <Input
-                placeholder="Danh mục"
-                value={form.category}
-                onChange={(event) => handleChange("category", event.target.value)}
-              />
-              <Input
-                type="number"
-                min={0}
-                step={1}
-                placeholder="Số lượng"
-                value={form.quantity}
-                onChange={(event) => handleChange("quantity", event.target.value)}
-              />
-              <Input
-                type="number"
-                min={0}
-                step={1000}
-                placeholder="Giá (VND)"
-                value={form.price}
-                onChange={(event) => handleChange("price", event.target.value)}
-              />
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <CardTitle>Danh sách sản phẩm</CardTitle>
+              <CardDescription>
+                Chỉnh sửa hoặc xóa trực tiếp từng sản phẩm trong bảng.
+              </CardDescription>
             </div>
-
-            {error && <p className="text-sm text-destructive">{error}</p>}
-
-            <div className="flex flex-wrap gap-2">
-              <Button type="submit">
-                <Plus className="size-4" />
-                {editingId ? "Lưu thay đổi" : "Thêm sản phẩm"}
-              </Button>
-              {editingId && (
-                <Button type="button" variant="outline" onClick={resetForm}>
-                  Hủy chỉnh sửa
-                </Button>
-              )}
-            </div>
-          </form>
-        </CardContent>
-      </Card>
-
-      <Card className="border border-border/70">
-        <CardHeader className="border-b border-border/70">
-          <CardTitle>Danh sách sản phẩm</CardTitle>
-          <CardDescription>
-            Chỉnh sửa hoặc xóa trực tiếp từng sản phẩm trong bảng.
-          </CardDescription>
+            <Button
+              type="button"
+              className="cursor-pointer"
+              disabled={isSubmittingProduct}
+              onClick={handleOpenCreateProductDialog}
+            >
+              <Plus className="size-4" />
+              Thêm sản phẩm
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="pt-3">
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-14">STT</TableHead>
+                <TableHead className="w-28">Hình ảnh</TableHead>
                 <TableHead>Tên</TableHead>
                 <TableHead>SKU</TableHead>
                 <TableHead>Danh mục</TableHead>
@@ -332,18 +545,48 @@ export default function StoragePage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {products.length === 0 ? (
+              {isLoadingProducts ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-6 text-center text-muted-foreground">
+                  <TableCell colSpan={9} className="py-6 text-center text-muted-foreground">
+                    Đang tải danh sách sản phẩm...
+                  </TableCell>
+                </TableRow>
+              ) : products.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={9} className="py-6 text-center text-muted-foreground">
                     Chưa có sản phẩm nào trong kho.
                   </TableCell>
                 </TableRow>
               ) : (
-                products.map((product) => {
+                products.map((product, index) => {
                   const stock = getStockBadge(product.quantity);
 
                   return (
                     <TableRow key={product.id}>
+                      <TableCell className="text-muted-foreground">{index + 1}</TableCell>
+                      <TableCell>
+                        <div
+                          className="group relative inline-flex"
+                          onMouseEnter={(event) => handleHoverPreview(event, product)}
+                          onMouseMove={(event) => handleHoverPreview(event, product)}
+                          onMouseLeave={clearHoverPreview}
+                        >
+                          <div className="size-11 overflow-hidden border border-border/70 bg-muted">
+                            {product.imageUrl ? (
+                              <img
+                                src={product.imageUrl}
+                                alt={product.name}
+                                loading="lazy"
+                                className="size-full object-cover transition-transform duration-200 group-hover:scale-110"
+                              />
+                            ) : (
+                              <div className="flex size-full items-center justify-center text-xs font-medium text-muted-foreground">
+                                {getProductInitials(product.name)}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </TableCell>
                       <TableCell className="font-medium">{product.name}</TableCell>
                       <TableCell>{product.sku}</TableCell>
                       <TableCell>{product.category}</TableCell>
@@ -358,6 +601,7 @@ export default function StoragePage() {
                             type="button"
                             size="sm"
                             variant="outline"
+                            disabled={isSubmittingProduct || deletingProductId === product.id}
                             onClick={() => handleEdit(product)}
                           >
                             <Pencil className="size-3.5" />
@@ -367,10 +611,11 @@ export default function StoragePage() {
                             type="button"
                             size="sm"
                             variant="destructive"
+                            disabled={isSubmittingProduct || deletingProductId === product.id}
                             onClick={() => handleDelete(product)}
                           >
                             <Trash2 className="size-3.5" />
-                            Xóa
+                            {deletingProductId === product.id ? "Đang xóa" : "Xóa"}
                           </Button>
                         </div>
                       </TableCell>
@@ -380,8 +625,233 @@ export default function StoragePage() {
               )}
             </TableBody>
           </Table>
+
+          {productsLoadError ? (
+            <p className="mt-3 text-sm text-destructive">{productsLoadError}</p>
+          ) : null}
         </CardContent>
       </Card>
+
+      {hoverPreview ? (
+        <div
+          className="pointer-events-none fixed z-[100] hidden md:block"
+          style={{
+            left: `${hoverPreview.x}px`,
+            top: `${hoverPreview.y}px`,
+          }}
+        >
+          <div className="w-[22.5rem] overflow-hidden rounded-xl border border-border/80 bg-background shadow-2xl ring-1 ring-black/10">
+            <div className="flex h-64 items-center justify-center bg-muted/35 p-2">
+              <img
+                src={hoverPreview.src}
+                alt={hoverPreview.name}
+                loading="lazy"
+                className="max-h-full w-full object-contain"
+              />
+            </div>
+            <div className="border-t border-border/70 px-3 py-2 text-xs font-medium text-foreground">
+              {hoverPreview.name}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <Dialog
+        open={isProductDialogOpen}
+        onOpenChange={(open) => {
+          setIsProductDialogOpen(open);
+          if (!open) {
+            resetForm();
+          }
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto p-0 sm:max-w-4xl">
+          <DialogHeader className="space-y-2 border-b border-border/70 px-6 pt-6 pb-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <DialogTitle className="text-xl">
+                {editingId ? "Cập nhật sản phẩm" : "Thêm sản phẩm mới"}
+              </DialogTitle>
+              <Badge variant="secondary" className="text-[11px] font-medium">
+                {editingId ? "Chế độ chỉnh sửa" : "Tạo mới"}
+              </Badge>
+            </div>
+            <DialogDescription>
+              Điền thông tin chính, tải ảnh từ máy và lưu sản phẩm ngay trong bảng kho.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSubmit} className="space-y-5 px-6 py-5">
+            <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
+              <div className="space-y-3">
+                <div className="rounded-xl border border-border/70 bg-muted/30 p-4">
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <p className="text-sm font-medium">Hình ảnh sản phẩm</p>
+                    {form.imageUrl ? (
+                      <Badge variant="secondary" className="text-[11px] font-medium">
+                        Đã chọn ảnh
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-[11px] font-medium">
+                        Chưa có ảnh
+                      </Badge>
+                    )}
+                  </div>
+
+                  <div className="relative aspect-square overflow-hidden rounded-lg border border-dashed border-border/70 bg-background">
+                    {form.imageUrl ? (
+                      <>
+                        <img
+                          src={form.imageUrl}
+                          alt={form.name || "Hình ảnh sản phẩm"}
+                          loading="lazy"
+                          className="size-full object-cover"
+                        />
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="icon"
+                          className="absolute top-2 right-2 size-8 rounded-full shadow-md"
+                          onClick={handleRemoveImage}
+                        >
+                          <Trash2 className="size-3.5" />
+                          <span className="sr-only">Xóa ảnh</span>
+                        </Button>
+                      </>
+                    ) : (
+                      <div className="flex size-full flex-col items-center justify-center gap-2 text-center text-muted-foreground">
+                        <ImagePlus className="size-5" />
+                        <p className="px-4 text-xs">Chưa có ảnh, vui lòng tải ảnh từ máy</p>
+                      </div>
+                    )}
+                  </div>
+
+                  <input
+                    ref={imageInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleImageUpload}
+                  />
+
+                  <div className="mt-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => imageInputRef.current?.click()}
+                    >
+                      <ImagePlus className="size-4" />
+                      {form.imageUrl ? "Đổi ảnh" : "Tải ảnh"}
+                    </Button>
+                  </div>
+
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    {imageFileName
+                      ? `Đã chọn: ${imageFileName}. Bấm nút thùng rác trên ảnh để xóa.`
+                      : "Hỗ trợ JPG, PNG, WEBP (tối đa 5MB)."}
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-border/70 bg-background p-4 shadow-sm sm:p-5">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2 sm:col-span-2">
+                    <label htmlFor="product-name" className="text-sm font-medium">
+                      Tên sản phẩm
+                    </label>
+                    <Input
+                      id="product-name"
+                      placeholder="Nhập tên sản phẩm"
+                      value={form.name}
+                      onChange={(event) => handleChange("name", event.target.value)}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label htmlFor="product-sku" className="text-sm font-medium">
+                      SKU
+                    </label>
+                    <Input
+                      id="product-sku"
+                      placeholder="VD: KB-K87"
+                      value={form.sku}
+                      onChange={(event) => handleChange("sku", event.target.value)}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label htmlFor="product-category" className="text-sm font-medium">
+                      Danh mục
+                    </label>
+                    <Input
+                      id="product-category"
+                      placeholder="VD: Phụ kiện"
+                      value={form.category}
+                      onChange={(event) => handleChange("category", event.target.value)}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label htmlFor="product-quantity" className="text-sm font-medium">
+                      Số lượng
+                    </label>
+                    <Input
+                      id="product-quantity"
+                      type="number"
+                      min={0}
+                      step={1}
+                      placeholder="0"
+                      value={form.quantity}
+                      onChange={(event) => handleChange("quantity", event.target.value)}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label htmlFor="product-price" className="text-sm font-medium">
+                      Giá (VND)
+                    </label>
+                    <Input
+                      id="product-price"
+                      type="number"
+                      min={0}
+                      step={1000}
+                      placeholder="0"
+                      value={form.price}
+                      onChange={(event) => handleChange("price", event.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {error && <p className="text-sm text-destructive">{error}</p>}
+
+            <div className="flex flex-col-reverse gap-2 border-t border-border/70 pt-4 sm:flex-row sm:justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isSubmittingProduct}
+                onClick={() => {
+                  setIsProductDialogOpen(false);
+                  resetForm();
+                }}
+              >
+                Hủy
+              </Button>
+              <Button type="submit" className="sm:min-w-[170px]" disabled={isSubmittingProduct}>
+                <Plus className="size-4" />
+                {isSubmittingProduct
+                  ? editingId
+                    ? "Đang lưu..."
+                    : "Đang thêm..."
+                  : editingId
+                    ? "Lưu thay đổi"
+                    : "Thêm sản phẩm"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
