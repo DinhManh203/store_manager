@@ -9,7 +9,15 @@ import {
   useRef,
   useState,
 } from "react";
-import { ImagePlus, Pencil, Plus, Trash2 } from "lucide-react";
+import {
+  ImagePlus,
+  Pencil,
+  Plus,
+  Search,
+  SlidersHorizontal,
+  Trash2,
+  X,
+} from "lucide-react";
 
 import { extractErrorMessage } from "@/lib/auth";
 import { Badge } from "@/components/ui/badge";
@@ -30,6 +38,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Table,
   TableBody,
   TableCell,
@@ -46,6 +61,7 @@ type Product = {
   category: string;
   quantity: number;
   price: number;
+  createdAt: string;
 };
 
 type ProductForm = {
@@ -64,6 +80,8 @@ type HoverPreview = {
   y: number;
 };
 
+type StockFilter = "all" | "stable" | "low" | "out";
+
 const emptyForm: ProductForm = {
   name: "",
   imageUrl: "",
@@ -79,6 +97,33 @@ const formatCurrency = (value: number) =>
     currency: "VND",
     maximumFractionDigits: 0,
   });
+
+const formatDateTime = (value: string) => {
+  const parsedDate = new Date(value);
+  if (Number.isNaN(parsedDate.getTime())) {
+    return "Không rõ";
+  }
+
+  const parts = new Intl.DateTimeFormat("vi-VN", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(parsedDate);
+
+  const day = parts.find((part) => part.type === "day")?.value ?? "00";
+  const month = parts.find((part) => part.type === "month")?.value ?? "00";
+  const year = parts.find((part) => part.type === "year")?.value ?? "0000";
+  const hour = parts.find((part) => part.type === "hour")?.value ?? "00";
+  const minute = parts.find((part) => part.type === "minute")?.value ?? "00";
+  const second = parts.find((part) => part.type === "second")?.value ?? "00";
+
+  return `${day}/${month}/${year} ${hour}:${minute}:${second}`;
+};
 
 const getStockBadge = (quantity: number) => {
   if (quantity === 0) {
@@ -128,6 +173,29 @@ const readNumber = (value: unknown) => {
   return 0;
 };
 
+const normalizeSearchText = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+
+const matchStockFilter = (quantity: number, filter: StockFilter) => {
+  if (filter === "all") {
+    return true;
+  }
+
+  if (filter === "out") {
+    return quantity === 0;
+  }
+
+  if (filter === "low") {
+    return quantity > 0 && quantity < 10;
+  }
+
+  return quantity >= 10;
+};
+
 const normalizeProductPayload = (payload: unknown): Product | null => {
   if (!isObject(payload)) {
     return null;
@@ -147,11 +215,15 @@ const normalizeProductPayload = (payload: unknown): Product | null => {
     quantity: Math.max(0, Math.trunc(readNumber(payload.quantity))),
     price: readNumber(payload.price),
     imageUrl: readString(payload.imageUrl).trim(),
+    createdAt:
+      readString(payload.createdAt).trim() || readString(payload.created_at).trim(),
   };
 };
 
 export default function StoragePage() {
   const [products, setProducts] = useState<Product[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [stockFilter, setStockFilter] = useState<StockFilter>("all");
   const [form, setForm] = useState<ProductForm>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isProductDialogOpen, setIsProductDialogOpen] = useState(false);
@@ -177,6 +249,24 @@ export default function StoragePage() {
       ),
     [products]
   );
+
+  const filteredProducts = useMemo(() => {
+    const keyword = normalizeSearchText(searchQuery);
+    return products.filter((product) => {
+      if (!matchStockFilter(product.quantity, stockFilter)) {
+        return false;
+      }
+
+      if (!keyword) {
+        return true;
+      }
+
+      const haystack = normalizeSearchText(
+        [product.name, product.sku, product.category].join(" ")
+      );
+      return haystack.includes(keyword);
+    });
+  }, [products, searchQuery, stockFilter]);
 
   const loadProductsFromApi = async () => {
     setIsLoadingProducts(true);
@@ -397,6 +487,9 @@ export default function StoragePage() {
       }
 
       setProductsLoadError("");
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("notifications:refresh"));
+      }
       resetForm();
       setIsProductDialogOpen(false);
     } catch {
@@ -509,6 +602,58 @@ export default function StoragePage() {
         </Card>
       </section>
 
+      <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+        <div className="relative w-full sm:max-w-sm">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Tìm theo tên, SKU, danh mục..."
+            className="pl-8 pr-8"
+          />
+          {searchQuery ? (
+            <button
+              type="button"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+              onClick={() => setSearchQuery("")}
+              aria-label="Xóa từ khóa tìm kiếm"
+            >
+              <X className="size-4" />
+            </button>
+          ) : null}
+        </div>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <Select
+            value={stockFilter}
+            onValueChange={(value) => setStockFilter(value as StockFilter)}
+          >
+            <div className="relative w-full sm:w-[220px]">
+              <SlidersHorizontal className="pointer-events-none absolute left-3 top-1/2 z-10 size-4 -translate-y-1/2 text-muted-foreground" />
+              <SelectTrigger className="w-full cursor-pointer pl-9">
+                <SelectValue placeholder="Lọc theo trạng thái" />
+              </SelectTrigger>
+            </div>
+            <SelectContent align="end" className="w-[220px]">
+              <SelectItem value="all" className="cursor-pointer">
+                Tất cả trạng thái
+              </SelectItem>
+              <SelectItem value="stable" className="cursor-pointer">
+                Ổn định
+              </SelectItem>
+              <SelectItem value="low" className="cursor-pointer">
+                Sắp hết
+              </SelectItem>
+              <SelectItem value="out" className="cursor-pointer">
+                Hết hàng
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            Hiển thị {filteredProducts.length}/{products.length} sản phẩm
+          </p>
+        </div>
+      </div>
+
       <Card className="border border-border/70">
         <CardHeader className="border-b border-border/70">
           <div className="flex items-start justify-between gap-3">
@@ -540,6 +685,7 @@ export default function StoragePage() {
                 <TableHead>Danh mục</TableHead>
                 <TableHead>Số lượng</TableHead>
                 <TableHead>Giá</TableHead>
+                <TableHead className="min-w-[180px]">Thời gian tạo</TableHead>
                 <TableHead>Trạng thái</TableHead>
                 <TableHead className="text-right">Thao tác</TableHead>
               </TableRow>
@@ -547,18 +693,24 @@ export default function StoragePage() {
             <TableBody>
               {isLoadingProducts ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="py-6 text-center text-muted-foreground">
+                  <TableCell colSpan={10} className="py-6 text-center text-muted-foreground">
                     Đang tải danh sách sản phẩm...
                   </TableCell>
                 </TableRow>
               ) : products.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="py-6 text-center text-muted-foreground">
+                  <TableCell colSpan={10} className="py-6 text-center text-muted-foreground">
                     Chưa có sản phẩm nào trong kho.
                   </TableCell>
                 </TableRow>
+              ) : filteredProducts.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={10} className="py-6 text-center text-muted-foreground">
+                    Không tìm thấy sản phẩm phù hợp với từ khóa: {searchQuery}.
+                  </TableCell>
+                </TableRow>
               ) : (
-                products.map((product, index) => {
+                filteredProducts.map((product, index) => {
                   const stock = getStockBadge(product.quantity);
 
                   return (
@@ -592,6 +744,7 @@ export default function StoragePage() {
                       <TableCell>{product.category}</TableCell>
                       <TableCell>{product.quantity}</TableCell>
                       <TableCell>{formatCurrency(product.price)}</TableCell>
+                      <TableCell>{formatDateTime(product.createdAt)}</TableCell>
                       <TableCell>
                         <Badge variant={stock.variant}>{stock.label}</Badge>
                       </TableCell>

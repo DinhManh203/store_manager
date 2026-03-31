@@ -5,6 +5,7 @@ import { extractAuthToken, extractErrorMessage, extractRole } from "@/lib/auth";
 const AUTH_COOKIE_NAME = "auth_token";
 const AUTH_ROLE_COOKIE_NAME = "auth_role";
 const ONE_WEEK_IN_SECONDS = 60 * 60 * 24 * 7;
+const PROFILE_PATH = process.env.NEXT_PUBLIC_API_PROFILE_PATH ?? "/nguoi-dung/ho-so";
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
@@ -68,6 +69,11 @@ const resolveBackendLoginUrl = () => {
   const normalizedPath = loginPath.startsWith("/") ? loginPath : `/${loginPath}`;
 
   return new URL(normalizedPath, baseUrl).toString();
+};
+
+const resolveBackendProfileUrl = (backendLoginUrl: string) => {
+  const normalizedPath = PROFILE_PATH.startsWith("/") ? PROFILE_PATH : `/${PROFILE_PATH}`;
+  return new URL(normalizedPath, backendLoginUrl).toString();
 };
 
 const readPayload = async (response: Response) => {
@@ -207,6 +213,28 @@ const loginWithBackend = async (
   return latestResult;
 };
 
+const resolveRoleFromProfile = async (backendLoginUrl: string, token: string) => {
+  try {
+    const profileUrl = resolveBackendProfileUrl(backendLoginUrl);
+    const profileResponse = await fetch(profileUrl, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      cache: "no-store",
+    });
+
+    if (!profileResponse.ok) {
+      return "";
+    }
+
+    const profilePayload = await readPayload(profileResponse);
+    return extractRole(profilePayload);
+  } catch {
+    return "";
+  }
+};
+
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as {
@@ -268,7 +296,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const role = extractRole(payload) || undefined;
+    const extractedRole = extractRole(payload);
+    const role = extractedRole || (await resolveRoleFromProfile(backendUrl, token)) || undefined;
     const responsePayload = buildSuccessPayload(payload, token, role);
     const response = NextResponse.json(responsePayload);
     setAuthCookies(response, token, role);

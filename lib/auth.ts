@@ -244,3 +244,28 @@ export const isAdminRole = (role: unknown) => {
     normalizedRole.includes("admin")
   );
 };
+
+export const getRoleLabel = (role: unknown) => {
+  const rawRole = readTrimmedString(readRoleValue(role));
+  if (!rawRole) {
+    return "Chưa xác định";
+  }
+
+  if (isAdminRole(rawRole)) {
+    return "Quản trị viên";
+  }
+
+  const normalizedRole = rawRole.toLowerCase();
+  if (
+    normalizedRole === "user" ||
+    normalizedRole === "employee" ||
+    normalizedRole === "staff" ||
+    normalizedRole === "nhan_vien" ||
+    normalizedRole === "nhanvien" ||
+    normalizedRole === "nhân viên"
+  ) {
+    return "Nhân viên";
+  }
+
+  return rawRole;
+};

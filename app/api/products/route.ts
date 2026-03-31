@@ -16,12 +16,25 @@ type ProductPayload = {
   quantity: number;
   price: number;
   imageUrl: string;
+  createdAt: string;
 };
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
 const readString = (value: unknown) => (typeof value === "string" ? value : "");
+
+const readDateString = (value: unknown) => {
+  if (typeof value === "string") {
+    return value.trim();
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return new Date(value).toISOString();
+  }
+
+  return "";
+};
 
 const readNumber = (value: unknown) => {
   if (typeof value === "number" && Number.isFinite(value)) {
@@ -123,6 +136,10 @@ const mapBackendProduct = (
     readString(payload.sku).trim() ||
     extractSkuFromDescription(rawDescription) ||
     readString(fallback.sku).trim();
+  const createdAt =
+    readDateString(payload.created_at) ||
+    readDateString(payload.createdAt) ||
+    readDateString(fallback.createdAt);
 
   if (!id || !name) {
     return null;
@@ -136,6 +153,7 @@ const mapBackendProduct = (
     quantity,
     price,
     imageUrl,
+    createdAt,
   };
 };
 
@@ -318,6 +336,7 @@ export async function POST(request: NextRequest) {
         quantity: body.quantity,
         price: body.price,
         imageUrl: body.imageUrl,
+        createdAt: new Date().toISOString(),
       }) ?? {
         id: `${Date.now()}`,
         name: body.name,
@@ -326,6 +345,7 @@ export async function POST(request: NextRequest) {
         quantity: body.quantity,
         price: body.price,
         imageUrl: body.imageUrl,
+        createdAt: new Date().toISOString(),
       };
 
     return NextResponse.json(createdProduct, { status: backendResponse.status });
@@ -397,6 +417,7 @@ export async function PUT(request: NextRequest) {
         quantity: body.quantity,
         price: body.price,
         imageUrl: body.imageUrl,
+        createdAt: new Date().toISOString(),
       }) ?? {
         id: productId,
         name: body.name,
@@ -405,6 +426,7 @@ export async function PUT(request: NextRequest) {
         quantity: body.quantity,
         price: body.price,
         imageUrl: body.imageUrl,
+        createdAt: new Date().toISOString(),
       };
 
     return NextResponse.json(updatedProduct, { status: backendResponse.status });
