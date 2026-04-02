@@ -24,6 +24,7 @@ type NotificationListPayload = {
   unreadCount: number;
   total: number;
   items: NotificationPayload[];
+  isSupported?: boolean;
 };
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -179,6 +180,7 @@ const mapNotificationList = (payload: unknown): NotificationListPayload => {
       unreadCount: 0,
       total: 0,
       items: [],
+      isSupported: true,
     };
   }
 
@@ -194,8 +196,16 @@ const mapNotificationList = (payload: unknown): NotificationListPayload => {
     ),
     total: Math.max(0, Math.trunc(readNumber(payload.total))),
     items,
+    isSupported: true,
   };
 };
+
+const buildUnsupportedNotificationsPayload = (): NotificationListPayload => ({
+  unreadCount: 0,
+  total: 0,
+  items: [],
+  isSupported: false,
+});
 
 const normalizeNotificationErrorMessage = (
   payload: unknown,
@@ -239,6 +249,10 @@ export async function GET(request: NextRequest) {
     });
 
     const payload = await readPayload(backendResponse);
+
+    if (backendResponse.status === 404) {
+      return NextResponse.json(buildUnsupportedNotificationsPayload(), { status: 200 });
+    }
 
     if (!backendResponse.ok) {
       const message = normalizeNotificationErrorMessage(
@@ -292,6 +306,10 @@ export async function PUT(request: NextRequest) {
     });
 
     const payload = await readPayload(backendResponse);
+
+    if (backendResponse.status === 404) {
+      return NextResponse.json({ success: true, updatedCount: 0, isSupported: false });
+    }
 
     if (!backendResponse.ok) {
       const message = normalizeNotificationErrorMessage(

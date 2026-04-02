@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 const AUTH_COOKIE_NAME = "auth_token";
 const LOGIN_PATH = "/login";
 
-export function proxy(request: NextRequest) {
+export default function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   const isStaticAsset =

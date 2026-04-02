@@ -30,6 +30,17 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogMedia,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -52,6 +63,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { toast } from "@/components/ui/toast";
 
 type Product = {
   id: string;
@@ -232,6 +244,8 @@ export default function StoragePage() {
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
   const [isSubmittingProduct, setIsSubmittingProduct] = useState(false);
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [productToDelete, setProductToDelete] = useState<Product | null>(null);
   const [productsLoadError, setProductsLoadError] = useState("");
   const [error, setError] = useState("");
   const imageInputRef = useRef<HTMLInputElement | null>(null);
@@ -532,19 +546,32 @@ export default function StoragePage() {
     setIsProductDialogOpen(true);
   };
 
-  const handleDelete = async (product: Product) => {
-    const isAccepted = window.confirm(
-      `Bạn có chắc muốn xóa sản phẩm "${product.name}"?`
-    );
+  const handleOpenDeleteDialog = (product: Product) => {
+    setProductToDelete(product);
+    setIsDeleteDialogOpen(true);
+  };
 
-    if (!isAccepted) {
+  const handleDeleteDialogOpenChange = (open: boolean) => {
+    if (deletingProductId) {
       return;
     }
 
-    setDeletingProductId(product.id);
+    setIsDeleteDialogOpen(open);
+    if (!open) {
+      setProductToDelete(null);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!productToDelete) {
+      return;
+    }
+
+    const targetProduct = productToDelete;
+    setDeletingProductId(targetProduct.id);
 
     try {
-      const response = await fetch(`/api/products?id=${encodeURIComponent(product.id)}`, {
+      const response = await fetch(`/api/products?id=${encodeURIComponent(targetProduct.id)}`, {
         method: "DELETE",
       });
       const responsePayload = await response.json().catch(() => ({}));
@@ -552,21 +579,24 @@ export default function StoragePage() {
       if (!response.ok) {
         const message =
           extractErrorMessage(responsePayload) || "Không thể xóa sản phẩm qua API.";
-        window.alert(message);
+        toast.error(message);
         return;
       }
 
-      setProducts((prev) => prev.filter((item) => item.id !== product.id));
+      setProducts((prev) => prev.filter((item) => item.id !== targetProduct.id));
       clearHoverPreview();
       setProductsLoadError("");
+      setIsDeleteDialogOpen(false);
+      setProductToDelete(null);
+      toast.success(`Đã xóa sản phẩm "${targetProduct.name}".`);
     } catch {
-      window.alert("Không thể kết nối API xóa sản phẩm.");
+      toast.error("Không thể kết nối API xóa sản phẩm.");
       return;
     } finally {
       setDeletingProductId(null);
     }
 
-    if (editingId === product.id) {
+    if (editingId === targetProduct.id) {
       resetForm();
     }
   };
@@ -754,6 +784,7 @@ export default function StoragePage() {
                             type="button"
                             size="sm"
                             variant="outline"
+                            className="cursor-pointer"
                             disabled={isSubmittingProduct || deletingProductId === product.id}
                             onClick={() => handleEdit(product)}
                           >
@@ -764,8 +795,9 @@ export default function StoragePage() {
                             type="button"
                             size="sm"
                             variant="destructive"
+                            className="cursor-pointer"
                             disabled={isSubmittingProduct || deletingProductId === product.id}
-                            onClick={() => handleDelete(product)}
+                            onClick={() => handleOpenDeleteDialog(product)}
                           >
                             <Trash2 className="size-3.5" />
                             {deletingProductId === product.id ? "Đang xóa" : "Xóa"}
@@ -808,6 +840,53 @@ export default function StoragePage() {
           </div>
         </div>
       ) : null}
+
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={handleDeleteDialogOpenChange}>
+        <AlertDialogContent
+          size="default"
+          className="!max-w-[34rem] sm:!max-w-[38rem] overflow-hidden rounded-lg bg-background p-0 shadow-2xl ring-1 ring-black/10"
+        >
+          <AlertDialogHeader className="gap-0 border-b border-border/70 px-5 py-4">
+            <div className="flex min-w-0 items-center gap-3">
+              <AlertDialogMedia className="m-0 size-10 shrink-0 rounded-lg bg-destructive/12 text-destructive">
+                <Trash2 className="size-5" />
+              </AlertDialogMedia>
+              <AlertDialogTitle className="text-xl font-semibold leading-tight">
+                Xóa sản phẩm
+              </AlertDialogTitle>
+            </div>
+          </AlertDialogHeader>
+
+          <AlertDialogDescription className="px-5 py-4 text-sm leading-relaxed text-foreground/75">
+            <span className="block">
+              {productToDelete
+                ? `Bạn có chắc muốn xóa sản phẩm "${productToDelete.name}"?`
+                : "Bạn có chắc muốn xóa sản phẩm này?"}
+            </span>
+            <span className="mt-1 block">Hành động này không thể hoàn tác.</span>
+          </AlertDialogDescription>
+
+          <AlertDialogFooter className="m-0 flex items-center justify-end gap-2 border-t border-border/70 bg-background px-5 py-4">
+            <AlertDialogCancel
+              disabled={Boolean(deletingProductId)}
+              className="cursor-pointer rounded-lg border-border/70 bg-background px-4 text-sm font-medium text-foreground hover:bg-muted/50"
+            >
+              Hủy
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="outline"
+              disabled={!productToDelete || Boolean(deletingProductId)}
+              className="cursor-pointer rounded-lg border-destructive/15 bg-destructive/10 px-4 text-sm font-semibold text-destructive hover:bg-destructive/15 hover:text-destructive"
+              onClick={(event) => {
+                event.preventDefault();
+                void handleConfirmDelete();
+              }}
+            >
+              {deletingProductId ? "Đang xóa..." : "Xóa sản phẩm"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog
         open={isProductDialogOpen}
@@ -983,6 +1062,7 @@ export default function StoragePage() {
               <Button
                 type="button"
                 variant="outline"
+                className="cursor-pointer"
                 disabled={isSubmittingProduct}
                 onClick={() => {
                   setIsProductDialogOpen(false);
@@ -991,7 +1071,11 @@ export default function StoragePage() {
               >
                 Hủy
               </Button>
-              <Button type="submit" className="sm:min-w-[170px]" disabled={isSubmittingProduct}>
+              <Button
+                type="submit"
+                className="cursor-pointer sm:min-w-[170px]"
+                disabled={isSubmittingProduct}
+              >
                 <Plus className="size-4" />
                 {isSubmittingProduct
                   ? editingId

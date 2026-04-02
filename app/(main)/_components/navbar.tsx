@@ -52,6 +52,7 @@ type NotificationApiPayload = {
   unreadCount: number;
   total: number;
   items: NotificationItem[];
+  isSupported?: boolean;
 };
 
 const NOTIFICATION_POLLING_INTERVAL_MS = 15000;
@@ -121,8 +122,12 @@ const normalizeNotificationItem = (payload: unknown): NotificationItem | null =>
 
 const normalizeNotificationResponse = (payload: unknown): NotificationApiPayload => {
   if (!isObject(payload)) {
-    return { unreadCount: 0, total: 0, items: [] };
+    return { unreadCount: 0, total: 0, items: [], isSupported: true };
   }
+
+  const isSupported = Object.prototype.hasOwnProperty.call(payload, "isSupported")
+    ? readBoolean(payload.isSupported)
+    : true;
 
   const rawItems = Array.isArray(payload.items) ? payload.items : [];
   const items = rawItems
@@ -133,6 +138,7 @@ const normalizeNotificationResponse = (payload: unknown): NotificationApiPayload
     unreadCount: Math.max(0, Math.trunc(readNumber(payload.unreadCount))),
     total: Math.max(0, Math.trunc(readNumber(payload.total))),
     items,
+    isSupported,
   };
 };
 
@@ -229,6 +235,7 @@ const Navbar = ({ isSidebarOpen, onToggleSidebar }: NavbarProps) => {
 
   const hasInitializedNotificationsRef = useRef(false);
   const seenNotificationIdsRef = useRef<Set<string>>(new Set());
+  const notificationsUnsupportedRef = useRef(false);
 
   const isDark = mounted && resolvedTheme === "dark";
   const authName =
@@ -283,6 +290,16 @@ const Navbar = ({ isSidebarOpen, onToggleSidebar }: NavbarProps) => {
 
   const loadNotifications = useCallback(
     async ({ silent = false }: { silent?: boolean } = {}) => {
+      if (notificationsUnsupportedRef.current) {
+        if (!silent) {
+          setIsLoadingNotifications(false);
+          setNotifications([]);
+          setUnreadCount(0);
+          setNotificationError("");
+        }
+        return;
+      }
+
       if (!silent) {
         setIsLoadingNotifications(true);
       }
@@ -305,6 +322,14 @@ const Navbar = ({ isSidebarOpen, onToggleSidebar }: NavbarProps) => {
         }
 
         const normalized = normalizeNotificationResponse(payload);
+        if (normalized.isSupported === false) {
+          notificationsUnsupportedRef.current = true;
+          setNotifications([]);
+          setUnreadCount(0);
+          setNotificationError("");
+          return;
+        }
+
         notifyNewNotifications(normalized.items);
         setNotifications(normalized.items);
         setUnreadCount(normalized.unreadCount);

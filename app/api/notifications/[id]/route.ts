@@ -123,6 +123,10 @@ export async function PUT(
     });
     const payload = await readPayload(backendResponse);
 
+    if (backendResponse.status === 404) {
+      return NextResponse.json({ success: true, id: notificationId, isSupported: false });
+    }
+
     if (!backendResponse.ok) {
       const message = extractErrorMessage(payload) || "Khong the danh dau thong bao da doc.";
       return NextResponse.json({ message }, { status: backendResponse.status });
