@@ -1,82 +1,26 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, Settings, Store, Users } from "lucide-react";
+import { LayoutDashboard, Settings, Store, Truck } from "lucide-react";
 
-import { useMounted } from "@/hooks/use-mounted";
-import { extractRoleFromToken, isAdminRole } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
-const baseNavigationItems = [
+const navigationItems = [
   { label: "Bảng điều khiển", href: "/", icon: LayoutDashboard },
   { label: "Quản lý kho", href: "/storage", icon: Store },
+  { label: "Nhà cung cấp", href: "/suppliers", icon: Truck },
+  { label: "Cài đặt", href: "/settings", icon: Settings },
 ];
-
-const adminNavigationItem = {
-  label: "Quản lý người dùng",
-  href: "/users",
-  icon: Users,
-};
-
-const settingsNavigationItem = {
-  label: "Cài đặt",
-  href: "/settings",
-  icon: Settings,
-};
 
 type SidebarProps = {
   isOpen: boolean;
 };
 
-const readAuthRole = () => {
-  if (typeof window === "undefined") {
-    return "";
-  }
-
-  const roleFromStorage = window.localStorage.getItem("auth_role")?.trim() ?? "";
-  if (roleFromStorage) {
-    return roleFromStorage;
-  }
-
-  const token = window.localStorage.getItem("auth_token") ?? "";
-  const roleFromToken = extractRoleFromToken(token);
-  if (roleFromToken) {
-    return roleFromToken;
-  }
-
-  const roleCookie = document.cookie
-    .split("; ")
-    .find((item) => item.startsWith("auth_role="));
-
-  if (!roleCookie) {
-    return "";
-  }
-
-  try {
-    return decodeURIComponent(roleCookie.slice("auth_role=".length)).trim();
-  } catch {
-    return roleCookie.slice("auth_role=".length).trim();
-  }
-};
-
 const Sidebar = ({ isOpen }: SidebarProps) => {
   const pathname = usePathname();
   const router = useRouter();
-  const mounted = useMounted();
-
-  const authRole = mounted ? readAuthRole() : "";
-
-  const isAdmin = isAdminRole(authRole);
-
-  const navigationItems = useMemo(
-    () =>
-      isAdmin
-        ? [...baseNavigationItems, adminNavigationItem, settingsNavigationItem]
-        : [...baseNavigationItems, settingsNavigationItem],
-    [isAdmin]
-  );
 
   useEffect(() => {
     navigationItems.forEach((item) => {

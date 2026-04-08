@@ -1,17 +1,38 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { Loader2 } from "lucide-react";
 
 import Navbar from "./_components/navbar";
 import Sidebar from "./_components/sidebar";
 import { cn } from "@/lib/utils";
 
 const MainLayout = ({ children }: { children: React.ReactNode }) => {
+  const router = useRouter();
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+
+  useEffect(() => {
+    const token = localStorage.getItem("auth_token");
+    if (!token) {
+      router.replace("/login");
+    } else {
+      setIsCheckingAuth(false);
+    }
+  }, [router]);
 
   const toggleSidebar = () => {
     setIsSidebarOpen((prev) => !prev);
   };
+
+  if (isCheckingAuth) {
+    return (
+      <div className="flex min-h-svh items-center justify-center bg-background text-foreground">
+        <Loader2 className="size-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-svh bg-background text-foreground">

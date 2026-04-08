@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import {
   ChangeEvent,
@@ -74,6 +74,8 @@ type Product = {
   quantity: number;
   price: number;
   createdAt: string;
+  supplierId?: string;
+  supplierName?: string;
 };
 
 type ProductForm = {
@@ -83,6 +85,7 @@ type ProductForm = {
   category: string;
   quantity: string;
   price: string;
+  supplierId: string;
 };
 
 type HoverPreview = {
@@ -94,6 +97,11 @@ type HoverPreview = {
 
 type StockFilter = "all" | "stable" | "low" | "out";
 
+type Supplier = {
+  id: string;
+  name: string;
+};
+
 const emptyForm: ProductForm = {
   name: "",
   imageUrl: "",
@@ -101,6 +109,7 @@ const emptyForm: ProductForm = {
   category: "",
   quantity: "",
   price: "",
+  supplierId: "",
 };
 
 const formatCurrency = (value: number) =>
@@ -227,6 +236,8 @@ const normalizeProductPayload = (payload: unknown): Product | null => {
     quantity: Math.max(0, Math.trunc(readNumber(payload.quantity))),
     price: readNumber(payload.price),
     imageUrl: readString(payload.imageUrl).trim(),
+    supplierId: readString(payload.supplierId).trim(),
+    supplierName: readString(payload.supplierName).trim(),
     createdAt:
       readString(payload.createdAt).trim() || readString(payload.created_at).trim(),
   };
@@ -234,6 +245,7 @@ const normalizeProductPayload = (payload: unknown): Product | null => {
 
 export default function StoragePage() {
   const [products, setProducts] = useState<Product[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [stockFilter, setStockFilter] = useState<StockFilter>("all");
   const [form, setForm] = useState<ProductForm>(emptyForm);
@@ -315,8 +327,27 @@ export default function StoragePage() {
     }
   };
 
+  const loadSuppliersFromApi = async () => {
+    try {
+      const response = await fetch("/api/suppliers", {
+        method: "GET",
+        cache: "no-store",
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (response.ok && Array.isArray(payload)) {
+        setSuppliers(payload.map((s: any) => ({
+          id: readString(s.id).trim(),
+          name: readString(s.name).trim(),
+        })));
+      }
+    } catch {
+      // Keep it simple and ignore supplier load failures for now
+    }
+  };
+
   useEffect(() => {
     void loadProductsFromApi();
+    void loadSuppliersFromApi();
   }, []);
 
   const handleChange = (field: keyof ProductForm, value: string) => {
@@ -420,8 +451,8 @@ export default function StoragePage() {
     const quantity = Number(form.quantity);
     const price = Number(form.price);
 
-    if (!name || !sku || !form.quantity || !form.price) {
-      return "Vui lòng nhập đầy đủ tên, SKU, số lượng và giá.";
+    if (!name || !sku || !form.quantity || !form.price || !form.supplierId) {
+      return "Vui lòng nhập đầy đủ thông tin (bắt buộc chọn nhà cung cấp).";
     }
 
     if (Number.isNaN(quantity) || quantity < 0 || !Number.isInteger(quantity)) {
@@ -462,6 +493,8 @@ export default function StoragePage() {
       category: form.category.trim() || "Khác",
       quantity: Number(form.quantity),
       price: Number(form.price),
+      supplierId: form.supplierId,
+      supplierName: suppliers.find(s => s.id === form.supplierId)?.name || "",
     };
 
     setError("");
@@ -531,6 +564,7 @@ export default function StoragePage() {
       category: product.category,
       quantity: String(product.quantity),
       price: String(product.price),
+      supplierId: product.supplierId || "",
     });
     setImageFileName(currentImageName);
     if (imageInputRef.current) {
@@ -712,6 +746,7 @@ export default function StoragePage() {
                 <TableHead className="w-28">Hình ảnh</TableHead>
                 <TableHead>Tên</TableHead>
                 <TableHead>SKU</TableHead>
+                <TableHead>Nhà cung cấp</TableHead>
                 <TableHead>Danh mục</TableHead>
                 <TableHead>Số lượng</TableHead>
                 <TableHead>Giá</TableHead>
@@ -723,19 +758,19 @@ export default function StoragePage() {
             <TableBody>
               {isLoadingProducts ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="py-6 text-center text-muted-foreground">
+                  <TableCell colSpan={11} className="py-6 text-center text-muted-foreground">
                     Đang tải danh sách sản phẩm...
                   </TableCell>
                 </TableRow>
               ) : products.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="py-6 text-center text-muted-foreground">
+                  <TableCell colSpan={11} className="py-6 text-center text-muted-foreground">
                     Chưa có sản phẩm nào trong kho.
                   </TableCell>
                 </TableRow>
               ) : filteredProducts.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="py-6 text-center text-muted-foreground">
+                  <TableCell colSpan={11} className="py-6 text-center text-muted-foreground">
                     Không tìm thấy sản phẩm phù hợp với từ khóa: {searchQuery}.
                   </TableCell>
                 </TableRow>
@@ -771,6 +806,7 @@ export default function StoragePage() {
                       </TableCell>
                       <TableCell className="font-medium">{product.name}</TableCell>
                       <TableCell>{product.sku}</TableCell>
+                      <TableCell>{product.supplierName || "—"}</TableCell>
                       <TableCell>{product.category}</TableCell>
                       <TableCell>{product.quantity}</TableCell>
                       <TableCell>{formatCurrency(product.price)}</TableCell>
@@ -1021,6 +1057,27 @@ export default function StoragePage() {
                       value={form.category}
                       onChange={(event) => handleChange("category", event.target.value)}
                     />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label htmlFor="product-supplier" className="text-sm font-medium">
+                      Nhà cung cấp
+                    </label>
+                    <Select
+                      value={form.supplierId || undefined}
+                      onValueChange={(value) => handleChange("supplierId", value)}
+                    >
+                      <SelectTrigger id="product-supplier" className="w-full">
+                        <SelectValue placeholder="-- Chọn nhà cung cấp --" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {suppliers.map((supplier) => (
+                          <SelectItem key={supplier.id} value={supplier.id}>
+                            {supplier.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   <div className="space-y-2">

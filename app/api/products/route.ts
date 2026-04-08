@@ -17,6 +17,8 @@ type ProductPayload = {
   price: number;
   imageUrl: string;
   createdAt: string;
+  supplierId?: string;
+  supplierName?: string;
 };
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -140,6 +142,8 @@ const mapBackendProduct = (
     readDateString(payload.created_at) ||
     readDateString(payload.createdAt) ||
     readDateString(fallback.createdAt);
+  const supplierId = readString(payload.supplier_id) || readString(fallback.supplierId);
+  const supplierName = readString(payload.supplier_name) || readString(fallback.supplierName);
 
   if (!id || !name) {
     return null;
@@ -154,6 +158,8 @@ const mapBackendProduct = (
     price,
     imageUrl,
     createdAt,
+    supplierId,
+    supplierName,
   };
 };
 
@@ -224,6 +230,8 @@ const normalizeCreateOrUpdateBody = (body: unknown) => {
   const quantity = Number(readString(source.quantity) || readNumber(source.quantity));
   const price = Number(readString(source.price) || readNumber(source.price));
   const description = readString(source.description).trim();
+  const supplierId = readString(source.supplierId).trim();
+  const supplierName = readString(source.supplierName).trim();
 
   return {
     id: readString(source.id).trim(),
@@ -234,12 +242,18 @@ const normalizeCreateOrUpdateBody = (body: unknown) => {
     quantity,
     price,
     description,
+    supplierId,
+    supplierName,
   };
 };
 
 const validateProductBody = (payload: ReturnType<typeof normalizeCreateOrUpdateBody>) => {
   if (!payload.name || !payload.sku) {
     return "Vui lòng nhập đầy đủ tên và SKU sản phẩm.";
+  }
+
+  if (!payload.supplierId || !payload.supplierName) {
+    return "Vui lòng chọn nhà cung cấp cho sản phẩm.";
   }
 
   if (!Number.isInteger(payload.quantity) || payload.quantity < 0) {
@@ -313,6 +327,8 @@ export async function POST(request: NextRequest) {
         image_url: body.imageUrl || null,
         description: body.description || `SKU:${body.sku}`,
         sku: body.sku,
+        supplier_id: body.supplierId || null,
+        supplier_name: body.supplierName || null,
       }),
       cache: "no-store",
     });
@@ -336,6 +352,8 @@ export async function POST(request: NextRequest) {
         quantity: body.quantity,
         price: body.price,
         imageUrl: body.imageUrl,
+        supplierId: body.supplierId,
+        supplierName: body.supplierName,
         createdAt: new Date().toISOString(),
       }) ?? {
         id: `${Date.now()}`,
@@ -345,6 +363,8 @@ export async function POST(request: NextRequest) {
         quantity: body.quantity,
         price: body.price,
         imageUrl: body.imageUrl,
+        supplierId: body.supplierId,
+        supplierName: body.supplierName,
         createdAt: new Date().toISOString(),
       };
 
@@ -393,6 +413,8 @@ export async function PUT(request: NextRequest) {
         image_url: body.imageUrl || null,
         description: body.description || `SKU:${body.sku}`,
         sku: body.sku,
+        supplier_id: body.supplierId || null,
+        supplier_name: body.supplierName || null,
       }),
       cache: "no-store",
     });
@@ -417,6 +439,8 @@ export async function PUT(request: NextRequest) {
         quantity: body.quantity,
         price: body.price,
         imageUrl: body.imageUrl,
+        supplierId: body.supplierId,
+        supplierName: body.supplierName,
         createdAt: new Date().toISOString(),
       }) ?? {
         id: productId,
@@ -426,6 +450,8 @@ export async function PUT(request: NextRequest) {
         quantity: body.quantity,
         price: body.price,
         imageUrl: body.imageUrl,
+        supplierId: body.supplierId,
+        supplierName: body.supplierName,
         createdAt: new Date().toISOString(),
       };
 
