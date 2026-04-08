@@ -290,6 +290,11 @@ export default function SuppliersPage() {
   };
 
   const handleOpenDeleteDialog = (supplier: Supplier) => {
+    if (supplier.is_active) {
+      toast.error("Chỉ có thể xóa nhà cung cấp đang Ngừng cung cấp.");
+      return;
+    }
+
     setSupplierToDelete(supplier);
     setIsDeleteDialogOpen(true);
   };
@@ -311,6 +316,11 @@ export default function SuppliersPage() {
     }
 
     const targetSupplier = supplierToDelete;
+    if (targetSupplier.is_active) {
+      toast.error("Chỉ có thể xóa nhà cung cấp đang Ngừng cung cấp.");
+      return;
+    }
+
     setDeletingId(targetSupplier.id);
 
     try {
@@ -529,10 +539,16 @@ export default function SuppliersPage() {
                         type="button"
                         variant="ghost"
                         size="icon"
-                        disabled={isSubmitting || deletingId === supplier.id}
+                        disabled={isSubmitting || deletingId === supplier.id || supplier.is_active}
                         onClick={() => handleOpenDeleteDialog(supplier)}
                         aria-label="Xóa nhà cung cấp"
-                        title={deletingId === supplier.id ? "Đang xóa..." : "Xóa nhà cung cấp"}
+                        title={
+                          supplier.is_active
+                            ? "Vui lòng chuyển trạng thái về Ngừng cung cấp trước khi xóa"
+                            : deletingId === supplier.id
+                              ? "Đang xóa..."
+                              : "Xóa nhà cung cấp"
+                        }
                         className="cursor-pointer text-red-500 hover:text-red-600 hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-red-500"
                       >
                         <Trash2 className="size-4" />
