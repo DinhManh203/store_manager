@@ -14,6 +14,7 @@ type SupplierPayload = {
   phone: string;
   email: string;
   address: string;
+  is_active: boolean;
   createdAt: string;
 };
 
@@ -21,6 +22,9 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
 const readString = (value: unknown) => (typeof value === "string" ? value : "");
+const readBoolean = (value: unknown) => (typeof value === "boolean" ? value : true);
+const hasOwn = (source: Record<string, unknown>, key: string) =>
+  Object.prototype.hasOwnProperty.call(source, key);
 
 const readDateString = (value: unknown) => {
   if (typeof value === "string") {
@@ -100,9 +104,8 @@ const mapBackendSupplier = (payload: unknown): SupplierPayload | null => {
     phone: readString(payload.phone).trim(),
     email: readString(payload.email).trim(),
     address: readString(payload.address).trim(),
-    createdAt:
-      readDateString(payload.created_at) ||
-      readDateString(payload.createdAt),
+    is_active: payload.is_active !== undefined ? readBoolean(payload.is_active) : true,
+    createdAt: readDateString(payload.created_at) || readDateString(payload.createdAt),
   };
 };
 
@@ -221,6 +224,7 @@ export async function POST(request: NextRequest) {
         phone: readString(body.phone).trim() || null,
         email: readString(body.email).trim() || null,
         address: readString(body.address).trim() || null,
+        is_active: hasOwn(body, "is_active") ? readBoolean(body.is_active) : true,
       }),
       cache: "no-store",
     });
@@ -242,6 +246,7 @@ export async function POST(request: NextRequest) {
       phone: readString(body.phone).trim(),
       email: readString(body.email).trim(),
       address: readString(body.address).trim(),
+      is_active: hasOwn(body, "is_active") ? readBoolean(body.is_active) : true,
       createdAt: new Date().toISOString(),
     };
 
@@ -270,9 +275,34 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ message: "Thiếu id nhà cung cấp để cập nhật." }, { status: 400 });
     }
 
-    const name = readString(body.name).trim();
-    if (!name) {
-      return NextResponse.json({ message: "Vui lòng nhập tên nhà cung cấp." }, { status: 400 });
+    const updatePayload: Record<string, unknown> = {};
+
+    if (hasOwn(body, "name")) {
+      const name = readString(body.name).trim();
+      if (!name) {
+        return NextResponse.json({ message: "Vui lòng nhập tên nhà cung cấp." }, { status: 400 });
+      }
+      updatePayload.name = name;
+    }
+
+    if (hasOwn(body, "phone")) {
+      updatePayload.phone = readString(body.phone).trim() || null;
+    }
+
+    if (hasOwn(body, "email")) {
+      updatePayload.email = readString(body.email).trim() || null;
+    }
+
+    if (hasOwn(body, "address")) {
+      updatePayload.address = readString(body.address).trim() || null;
+    }
+
+    if (hasOwn(body, "is_active")) {
+      updatePayload.is_active = readBoolean(body.is_active);
+    }
+
+    if (Object.keys(updatePayload).length === 0) {
+      return NextResponse.json({ message: "Không có dữ liệu gì để cập nhật." }, { status: 400 });
     }
 
     const backendUrl = resolveBackendUrl(`${SUPPLIER_UPDATE_PATH}/${encodeURIComponent(supplierId)}`);
@@ -282,12 +312,7 @@ export async function PUT(request: NextRequest) {
         Authorization: `Bearer ${authToken}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        name,
-        phone: readString(body.phone).trim() || null,
-        email: readString(body.email).trim() || null,
-        address: readString(body.address).trim() || null,
-      }),
+      body: JSON.stringify(updatePayload),
       cache: "no-store",
     });
 
@@ -302,12 +327,18 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ message }, { status: backendResponse.status });
     }
 
+    const fallbackName =
+      (typeof updatePayload.name === "string" && updatePayload.name) ||
+      readString(body.name).trim() ||
+      "Nhà cung cấp";
+
     const updated = mapBackendSupplier(payload) ?? {
       id: supplierId,
-      name,
+      name: fallbackName,
       phone: readString(body.phone).trim(),
       email: readString(body.email).trim(),
       address: readString(body.address).trim(),
+      is_active: hasOwn(body, "is_active") ? readBoolean(body.is_active) : true,
       createdAt: new Date().toISOString(),
     };
 

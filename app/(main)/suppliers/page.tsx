@@ -50,6 +50,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/toast";
 
 type Supplier = {
@@ -58,6 +60,7 @@ type Supplier = {
   phone: string;
   email: string;
   address: string;
+  is_active: boolean;
   createdAt: string;
 };
 
@@ -81,6 +84,7 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
 const readString = (value: unknown) => (typeof value === "string" ? value : "");
+const readBoolean = (value: unknown) => (typeof value === "boolean" ? value : true);
 
 const normalizeSearchText = (value: string) =>
   value
@@ -106,6 +110,7 @@ const normalizeSupplierPayload = (payload: unknown): Supplier | null => {
     phone: readString(payload.phone).trim(),
     email: readString(payload.email).trim(),
     address: readString(payload.address).trim(),
+    is_active: payload.is_active !== undefined ? readBoolean(payload.is_active) : true,
     createdAt:
       readString(payload.createdAt).trim() || readString(payload.created_at).trim(),
   };
@@ -284,11 +289,6 @@ export default function SuppliersPage() {
     setIsDialogOpen(true);
   };
 
-  const handleOpenCreateDialog = () => {
-    resetForm();
-    setIsDialogOpen(true);
-  };
-
   const handleOpenDeleteDialog = (supplier: Supplier) => {
     setSupplierToDelete(supplier);
     setIsDeleteDialogOpen(true);
@@ -340,6 +340,52 @@ export default function SuppliersPage() {
 
     if (editingId === targetSupplier.id) {
       resetForm();
+    }
+  };
+
+  const toggleActive = async (supplier: Supplier) => {
+    const nextStatus = !supplier.is_active;
+    const previousSuppliers = [...suppliers];
+
+    setSuppliers((prev) =>
+      prev.map((item) =>
+        item.id === supplier.id ? { ...item, is_active: nextStatus } : item
+      )
+    );
+
+    try {
+      const response = await fetch("/api/suppliers", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          id: supplier.id,
+          name: supplier.name,
+          is_active: nextStatus,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        setSuppliers(previousSuppliers);
+        toast.error(
+          extractErrorMessage(payload) || "Không thể cập nhật trạng thái nhà cung cấp."
+        );
+        return;
+      }
+
+      const normalized = normalizeSupplierPayload(payload);
+      if (normalized) {
+        setSuppliers((prev) =>
+          prev.map((item) => (item.id === normalized.id ? normalized : item))
+        );
+      }
+
+      toast.success(nextStatus ? "Đã chuyển sang Nguồn cung cấp." : "Đã chuyển sang Ngừng cung cấp.");
+    } catch {
+      setSuppliers(previousSuppliers);
+      toast.error("Không thể kết nối API cập nhật trạng thái nhà cung cấp.");
     }
   };
 
@@ -408,15 +454,6 @@ export default function SuppliersPage() {
                 Chỉnh sửa hoặc xóa trực tiếp từng nhà cung cấp trong bảng.
               </CardDescription>
             </div>
-            <Button
-              type="button"
-              className="cursor-pointer"
-              disabled={isSubmitting}
-              onClick={handleOpenCreateDialog}
-            >
-              <Plus className="size-4" />
-              Thêm nhà cung cấp
-            </Button>
           </div>
         </CardHeader>
         <CardContent className="pt-3">
@@ -428,25 +465,26 @@ export default function SuppliersPage() {
                 <TableHead>Địa chỉ</TableHead>
                 <TableHead>Số điện thoại</TableHead>
                 <TableHead>Email</TableHead>
+                <TableHead>Trạng thái</TableHead>
                 <TableHead className="text-right">Thao tác</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoadingSuppliers ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-6 text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="py-6 text-center text-muted-foreground">
                     Đang tải danh sách nhà cung cấp...
                   </TableCell>
                 </TableRow>
               ) : suppliers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-6 text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="py-6 text-center text-muted-foreground">
                     Chưa có nhà cung cấp nào.
                   </TableCell>
                 </TableRow>
               ) : filteredSuppliers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-6 text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="py-6 text-center text-muted-foreground">
                     Không tìm thấy nhà cung cấp phù hợp với từ khóa: {searchQuery}.
                   </TableCell>
                 </TableRow>
@@ -458,6 +496,18 @@ export default function SuppliersPage() {
                     <TableCell className="max-w-[200px] truncate">{supplier.address || "—"}</TableCell>
                     <TableCell>{supplier.phone || "—"}</TableCell>
                     <TableCell>{supplier.email || "—"}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          className="cursor-pointer"
+                          checked={supplier.is_active}
+                          onCheckedChange={() => void toggleActive(supplier)}
+                        />
+                        <Badge variant={supplier.is_active ? "default" : "secondary"}>
+                          {supplier.is_active ? "Nguồn cung cấp" : "Ngừng cung cấp"}
+                        </Badge>
+                      </div>
+                    </TableCell>
                     <TableCell className="text-right space-x-2">
                       <Button
                         type="button"
