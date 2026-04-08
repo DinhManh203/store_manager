@@ -7,7 +7,7 @@ import {
   useState,
 } from "react";
 import {
-  Pencil,
+  Edit2,
   Plus,
   Search,
   Trash2,
@@ -458,31 +458,31 @@ export default function SuppliersPage() {
                     <TableCell className="max-w-[200px] truncate">{supplier.address || "—"}</TableCell>
                     <TableCell>{supplier.phone || "—"}</TableCell>
                     <TableCell>{supplier.email || "—"}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          className="cursor-pointer"
-                          disabled={isSubmitting || deletingId === supplier.id}
-                          onClick={() => handleEdit(supplier)}
-                        >
-                          <Pencil className="size-3.5" />
-                          Sửa
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="destructive"
-                          className="cursor-pointer"
-                          disabled={isSubmitting || deletingId === supplier.id}
-                          onClick={() => handleOpenDeleteDialog(supplier)}
-                        >
-                          <Trash2 className="size-3.5" />
-                          {deletingId === supplier.id ? "Đang xóa" : "Xóa"}
-                        </Button>
-                      </div>
+                    <TableCell className="text-right space-x-2">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="cursor-pointer"
+                        disabled={isSubmitting || deletingId === supplier.id}
+                        onClick={() => handleEdit(supplier)}
+                        aria-label="Sửa nhà cung cấp"
+                        title="Sửa nhà cung cấp"
+                      >
+                        <Edit2 className="size-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        disabled={isSubmitting || deletingId === supplier.id}
+                        onClick={() => handleOpenDeleteDialog(supplier)}
+                        aria-label="Xóa nhà cung cấp"
+                        title={deletingId === supplier.id ? "Đang xóa..." : "Xóa nhà cung cấp"}
+                        className="cursor-pointer text-red-500 hover:text-red-600 hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-red-500"
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))

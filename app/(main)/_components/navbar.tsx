@@ -10,6 +10,7 @@ import {
   LogOut,
   Moon,
   PackagePlus,
+  ShieldCheck,
   Sun,
   UserCircle2,
 } from "lucide-react";
@@ -58,6 +59,7 @@ type NotificationApiPayload = {
 const NOTIFICATION_POLLING_INTERVAL_MS = 15000;
 const NEW_NOTIFICATION_WINDOW_MS = 24 * 60 * 60 * 1000;
 const NOTIFICATION_BADGE_MAX = 9;
+const SHOW_NOTIFICATIONS = false;
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
@@ -222,7 +224,10 @@ const buildNotificationMessage = (notification: NotificationItem) => {
   return notification.message || `${actorName} vừa cập nhật kho hàng.`;
 };
 
-const Navbar = ({ isSidebarOpen, onToggleSidebar }: NavbarProps) => {
+const Navbar = ({
+  isSidebarOpen,
+  onToggleSidebar,
+}: NavbarProps) => {
   const router = useRouter();
   const { resolvedTheme, setTheme } = useTheme();
   const mounted = useMounted();
@@ -257,6 +262,14 @@ const Navbar = ({ isSidebarOpen, onToggleSidebar }: NavbarProps) => {
 
   const handleToggleTheme = () => {
     setTheme(isDark ? "light" : "dark");
+  };
+
+  const triggerTopHeaderLoading = () => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.dispatchEvent(new Event("app:top-header-loading-start"));
   };
 
   const notifyNewNotifications = useCallback((items: NotificationItem[]) => {
@@ -348,6 +361,10 @@ const Navbar = ({ isSidebarOpen, onToggleSidebar }: NavbarProps) => {
   );
 
   useEffect(() => {
+    if (!SHOW_NOTIFICATIONS) {
+      return;
+    }
+
     void loadNotifications();
 
     const intervalId = window.setInterval(() => {
@@ -444,10 +461,13 @@ const Navbar = ({ isSidebarOpen, onToggleSidebar }: NavbarProps) => {
   };
 
   const handleOpenProfile = () => {
+    triggerTopHeaderLoading();
     router.push("/profile");
   };
 
   const handleLogout = async () => {
+    triggerTopHeaderLoading();
+
     try {
       await fetch("/api/auth/logout", { method: "POST" });
     } catch {
@@ -466,7 +486,7 @@ const Navbar = ({ isSidebarOpen, onToggleSidebar }: NavbarProps) => {
   return (
     <header
       className={cn(
-        "fixed inset-x-0 top-0 z-30 border-b border-border/70 bg-background/90 backdrop-blur transition-[left] duration-300",
+        "fixed inset-x-0 top-0 z-30 overflow-hidden border-b border-border/70 bg-background/90 backdrop-blur transition-[left] duration-300",
         isSidebarOpen ? "md:left-72" : "md:left-0"
       )}
     >
@@ -502,77 +522,79 @@ const Navbar = ({ isSidebarOpen, onToggleSidebar }: NavbarProps) => {
           {isDark ? <Sun className="size-4" /> : <Moon className="size-4" />}
         </Button>
 
-        <DropdownMenu
-          open={isNotificationOpen}
-          onOpenChange={(open) => {
-            setIsNotificationOpen(open);
-            if (open) {
-              void loadNotifications();
-            }
-          }}
-        >
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="icon" aria-label="Thông báo" className="relative cursor-pointer">
-              <Bell className="size-4" />
-              {unreadCount > 0 ? (
-                <span className="absolute -right-1 -top-1 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none text-primary-foreground">
-                  {unreadCount > NOTIFICATION_BADGE_MAX
-                    ? `${NOTIFICATION_BADGE_MAX}+`
-                    : unreadCount}
-                </span>
-              ) : null}
-            </Button>
-          </DropdownMenuTrigger>
-
-          <DropdownMenuContent
-            align="end"
-            sideOffset={10}
-            className="w-[360px] rounded-2xl border border-border/80 bg-popover p-0 text-popover-foreground shadow-2xl"
+        {SHOW_NOTIFICATIONS ? (
+          <DropdownMenu
+            open={isNotificationOpen}
+            onOpenChange={(open) => {
+              setIsNotificationOpen(open);
+              if (open) {
+                void loadNotifications();
+              }
+            }}
           >
-            <div className="border-b border-border/70 px-4 py-3">
-              <h3 className="text-3xl font-bold tracking-tight">Thông báo</h3>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {unreadCount > 0
-                  ? `Bạn có ${unreadCount} thông báo chưa đọc`
-                  : "Không có thông báo chưa đọc"}
-              </p>
-            </div>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="icon" aria-label="Thông báo" className="relative cursor-pointer">
+                <Bell className="size-4" />
+                {unreadCount > 0 ? (
+                  <span className="absolute -right-1 -top-1 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none text-primary-foreground">
+                    {unreadCount > NOTIFICATION_BADGE_MAX
+                      ? `${NOTIFICATION_BADGE_MAX}+`
+                      : unreadCount}
+                  </span>
+                ) : null}
+              </Button>
+            </DropdownMenuTrigger>
 
-            <div className="max-h-[430px] space-y-2 overflow-y-auto px-2 py-3">
-              {isLoadingNotifications && notifications.length === 0 ? (
-                <p className="px-2 py-4 text-sm text-muted-foreground">Đang tải thông báo...</p>
-              ) : null}
-
-              {!isLoadingNotifications && notifications.length === 0 && !notificationError ? (
-                <p className="px-2 py-4 text-sm text-muted-foreground">
-                  Chưa có thông báo mới.
+            <DropdownMenuContent
+              align="end"
+              sideOffset={10}
+              className="w-[360px] rounded-2xl border border-border/80 bg-popover p-0 text-popover-foreground shadow-2xl"
+            >
+              <div className="border-b border-border/70 px-4 py-3">
+                <h3 className="text-3xl font-bold tracking-tight">Thông báo</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {unreadCount > 0
+                    ? `Bạn có ${unreadCount} thông báo chưa đọc`
+                    : "Không có thông báo chưa đọc"}
                 </p>
-              ) : null}
+              </div>
 
-              {notificationError ? (
-                <p className="px-2 py-2 text-xs text-destructive">{notificationError}</p>
-              ) : null}
+              <div className="max-h-[430px] space-y-2 overflow-y-auto px-2 py-3">
+                {isLoadingNotifications && notifications.length === 0 ? (
+                  <p className="px-2 py-4 text-sm text-muted-foreground">Đang tải thông báo...</p>
+                ) : null}
 
-              {newestNotifications.length > 0 ? (
-                <>
-                  <div className="px-2 pt-1 text-base font-semibold leading-none text-foreground">
-                    Mới
-                  </div>
-                  {newestNotifications.map(renderNotificationCard)}
-                </>
-              ) : null}
+                {!isLoadingNotifications && notifications.length === 0 && !notificationError ? (
+                  <p className="px-2 py-4 text-sm text-muted-foreground">
+                    Chưa có thông báo mới.
+                  </p>
+                ) : null}
 
-              {previousNotifications.length > 0 ? (
-                <>
-                  <div className="px-2 pt-2 text-base font-semibold leading-none text-foreground">
-                    Trước đó
-                  </div>
-                  {previousNotifications.map(renderNotificationCard)}
-                </>
-              ) : null}
-            </div>
-          </DropdownMenuContent>
-        </DropdownMenu>
+                {notificationError ? (
+                  <p className="px-2 py-2 text-xs text-destructive">{notificationError}</p>
+                ) : null}
+
+                {newestNotifications.length > 0 ? (
+                  <>
+                    <div className="px-2 pt-1 text-base font-semibold leading-none text-foreground">
+                      Mới
+                    </div>
+                    {newestNotifications.map(renderNotificationCard)}
+                  </>
+                ) : null}
+
+                {previousNotifications.length > 0 ? (
+                  <>
+                    <div className="px-2 pt-2 text-base font-semibold leading-none text-foreground">
+                      Trước đó
+                    </div>
+                    {previousNotifications.map(renderNotificationCard)}
+                  </>
+                ) : null}
+              </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -581,7 +603,9 @@ const Navbar = ({ isSidebarOpen, onToggleSidebar }: NavbarProps) => {
               className="hidden cursor-pointer items-center gap-2 rounded-lg border border-border/70 bg-card px-2.5 py-1.5 text-left transition-colors hover:bg-muted md:flex"
               aria-label="Mở menu tài khoản"
             >
-              <div className="size-7 rounded-full bg-primary/10" />
+              <div className="flex size-8 items-center justify-center rounded-full bg-primary/12 text-primary">
+                <ShieldCheck className="size-4" />
+              </div>
               <div className="leading-tight">
                 <p className="text-xs font-medium">{authName}</p>
                 <p className="text-[11px] text-muted-foreground">{authRole}</p>
@@ -607,10 +631,18 @@ const Navbar = ({ isSidebarOpen, onToggleSidebar }: NavbarProps) => {
         </DropdownMenu>
 
         <div className="flex items-center gap-2 md:hidden">
-          <Link href="/" className="text-xs font-medium text-muted-foreground">
+          <Link
+            href="/"
+            onClick={triggerTopHeaderLoading}
+            className="text-xs font-medium text-muted-foreground"
+          >
             Trang chủ
           </Link>
-          <Link href="/settings" className="text-xs font-medium text-muted-foreground">
+          <Link
+            href="/settings"
+            onClick={triggerTopHeaderLoading}
+            className="text-xs font-medium text-muted-foreground"
+          >
             Cài đặt
           </Link>
         </div>

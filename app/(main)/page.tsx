@@ -160,7 +160,7 @@ export default function DashboardPage() {
                 <TableRow>
                   <TableHead>Sản phẩm</TableHead>
                   <TableHead>Người thực hiện</TableHead>
-                  <TableHead>Hành động</TableHead>
+                  <TableHead>Thao tác</TableHead>
                   <TableHead>Chênh lệch</TableHead>
                   <TableHead>Thời gian</TableHead>
                 </TableRow>

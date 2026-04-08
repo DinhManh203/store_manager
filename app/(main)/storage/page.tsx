@@ -11,7 +11,7 @@ import {
 } from "react";
 import {
   ImagePlus,
-  Pencil,
+  Edit2,
   Plus,
   Search,
   SlidersHorizontal,
@@ -1333,31 +1333,35 @@ export default function StoragePage() {
                           <TableCell>
                             <Badge variant={stock.variant}>{stock.label}</Badge>
                           </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex justify-end gap-2">
+                          <TableCell className="text-right space-x-2">
                               <Button
                                 type="button"
-                                size="sm"
-                                variant="outline"
+                                variant="ghost"
+                                size="icon"
                                 className="cursor-pointer"
                                 disabled={isSubmittingProduct || deletingProductId === product.id}
                                 onClick={() => handleEdit(product)}
+                                aria-label="Sửa sản phẩm"
+                                title="Sửa sản phẩm"
                               >
-                                <Pencil className="size-3.5" />
-                                Sửa
+                                <Edit2 className="size-4" />
                               </Button>
                               <Button
                                 type="button"
-                                size="sm"
-                                variant="destructive"
-                                className="cursor-pointer"
+                                variant="ghost"
+                                size="icon"
+                                className="cursor-pointer text-red-500 hover:text-red-600 hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-red-500"
                                 disabled={isSubmittingProduct || deletingProductId === product.id}
                                 onClick={() => handleOpenDeleteDialog(product)}
+                                aria-label="Xóa sản phẩm"
+                                title={
+                                  deletingProductId === product.id
+                                    ? "Đang xử lý xóa..."
+                                    : "Xóa sản phẩm"
+                                }
                               >
-                                <Trash2 className="size-3.5" />
-                                {deletingProductId === product.id ? "Đang xóa" : "Xóa"}
+                                <Trash2 className="size-4" />
                               </Button>
-                            </div>
                           </TableCell>
                         </TableRow>
                       );
@@ -1598,7 +1602,11 @@ export default function StoragePage() {
           }
         }}
       >
-        <DialogContent className="max-h-[90vh] overflow-y-auto p-0 sm:max-w-4xl">
+        <DialogContent
+          className="max-h-[90vh] overflow-y-auto p-0 sm:max-w-4xl"
+          onPointerDownOutside={(event) => event.preventDefault()}
+          onInteractOutside={(event) => event.preventDefault()}
+        >
           <DialogHeader className="space-y-2 border-b border-border/70 px-6 pt-6 pb-4">
             <div className="flex flex-wrap items-center gap-2">
               <DialogTitle className="text-xl">
@@ -1825,7 +1833,11 @@ export default function StoragePage() {
           }
         }}
       >
-        <DialogContent className="max-h-[90vh] overflow-y-auto p-0 sm:max-w-3xl">
+        <DialogContent
+          className="max-h-[90vh] overflow-y-auto p-0 sm:max-w-3xl"
+          onPointerDownOutside={(event) => event.preventDefault()}
+          onInteractOutside={(event) => event.preventDefault()}
+        >
           <DialogHeader className="space-y-2 border-b border-border/70 px-6 pt-6 pb-4">
             <DialogTitle className="text-xl">Thêm đơn chuyển kho</DialogTitle>
             <DialogDescription>
@@ -2005,7 +2017,11 @@ export default function StoragePage() {
           }
         }}
       >
-        <DialogContent className="max-h-[90vh] overflow-y-auto p-0 sm:max-w-4xl">
+        <DialogContent
+          className="max-h-[90vh] overflow-y-auto p-0 sm:max-w-4xl"
+          onPointerDownOutside={(event) => event.preventDefault()}
+          onInteractOutside={(event) => event.preventDefault()}
+        >
           <DialogHeader className="space-y-2 border-b border-border/70 px-6 pt-6 pb-4">
             <DialogTitle className="text-xl">Thêm đơn trả kho</DialogTitle>
             <DialogDescription>

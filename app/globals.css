@@ -256,3 +256,13 @@ input.hide-native-password-reveal::-webkit-contacts-auto-fill-button {
   display: none !important;
   pointer-events: none;
 }
+
+@keyframes top-loader-slide {
+  0% {
+    transform: translateX(-120%);
+  }
+
+  100% {
+    transform: translateX(420%);
+  }
+}

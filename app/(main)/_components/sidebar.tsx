@@ -3,13 +3,14 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, Settings, Store, Truck } from "lucide-react";
+import { LayoutDashboard, Settings, Store, Truck, Building2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
 const navigationItems = [
   { label: "Bảng điều khiển", href: "/", icon: LayoutDashboard },
   { label: "Quản lý kho", href: "/storage", icon: Store },
+  { label: "Quản lý chi nhánh", href: "/branches", icon: Building2 },
   { label: "Nhà cung cấp", href: "/suppliers", icon: Truck },
   { label: "Cài đặt", href: "/settings", icon: Settings },
 ];
@@ -22,11 +23,19 @@ const Sidebar = ({ isOpen }: SidebarProps) => {
   const pathname = usePathname();
   const router = useRouter();
 
+  const startTopHeaderLoading = () => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.dispatchEvent(new Event("app:top-header-loading-start"));
+  };
+
   useEffect(() => {
     navigationItems.forEach((item) => {
       router.prefetch(item.href);
     });
-  }, [navigationItems, router]);
+  }, [router]);
 
   return (
     <aside
@@ -57,6 +66,7 @@ const Sidebar = ({ isOpen }: SidebarProps) => {
               prefetch
               onMouseEnter={() => router.prefetch(item.href)}
               onFocus={() => router.prefetch(item.href)}
+              onClick={startTopHeaderLoading}
               className={cn(
                 "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors will-change-[background-color,color]",
                 isActive
