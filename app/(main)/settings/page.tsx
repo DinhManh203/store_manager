@@ -1,6 +1,7 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ThemeSettings from "./_components/theme-settings";
 import BranchesSettings from "./_components/branches-settings";
+import SuppliersSettings from "./_components/suppliers-settings";
 
 export default function SettingsPage() {
   return (
@@ -27,12 +28,21 @@ export default function SettingsPage() {
           >
             Thêm chi nhánh
           </TabsTrigger>
+          <TabsTrigger
+            value="suppliers"
+            className="h-9 flex-none cursor-pointer px-4 text-sm text-muted-foreground transition-colors data-[state=active]:bg-background data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-sm data-active:bg-background data-active:font-semibold data-active:text-foreground data-active:shadow-sm"
+          >
+            Thêm nhà cung cấp
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="theme" className="mt-0">
           <ThemeSettings />
         </TabsContent>
         <TabsContent value="branches" className="mt-0">
           <BranchesSettings />
+        </TabsContent>
+        <TabsContent value="suppliers" className="mt-0">
+          <SuppliersSettings />
         </TabsContent>
       </Tabs>
     </div>
