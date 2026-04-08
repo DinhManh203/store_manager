@@ -343,8 +343,7 @@ export default function SuppliersPage() {
     }
   };
 
-  const toggleActive = async (supplier: Supplier) => {
-    const nextStatus = !supplier.is_active;
+  const toggleActive = async (supplier: Supplier, nextStatus: boolean) => {
     const previousSuppliers = [...suppliers];
 
     setSuppliers((prev) =>
@@ -361,7 +360,6 @@ export default function SuppliersPage() {
         },
         body: JSON.stringify({
           id: supplier.id,
-          name: supplier.name,
           is_active: nextStatus,
         }),
       });
@@ -377,8 +375,14 @@ export default function SuppliersPage() {
 
       const normalized = normalizeSupplierPayload(payload);
       if (normalized) {
+        const hasStatusInPayload =
+          isObject(payload) && typeof payload.is_active === "boolean";
+        const nextSupplier = hasStatusInPayload
+          ? normalized
+          : { ...normalized, is_active: nextStatus };
+
         setSuppliers((prev) =>
-          prev.map((item) => (item.id === normalized.id ? normalized : item))
+          prev.map((item) => (item.id === nextSupplier.id ? nextSupplier : item))
         );
       }
 
@@ -501,7 +505,7 @@ export default function SuppliersPage() {
                         <Switch
                           className="cursor-pointer"
                           checked={supplier.is_active}
-                          onCheckedChange={() => void toggleActive(supplier)}
+                          onCheckedChange={(checked) => void toggleActive(supplier, checked)}
                         />
                         <Badge variant={supplier.is_active ? "default" : "secondary"}>
                           {supplier.is_active ? "Nguồn cung cấp" : "Ngừng cung cấp"}
