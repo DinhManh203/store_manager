@@ -48,6 +48,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -63,6 +64,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "@/components/ui/toast";
 
 type Product = {
@@ -88,6 +90,29 @@ type ProductForm = {
   supplierId: string;
 };
 
+type TransferOrderItemForm = {
+  productId: string;
+  quantity: string;
+};
+
+type TransferOrderForm = {
+  reason: string;
+  note: string;
+  items: TransferOrderItemForm[];
+};
+
+type ReturnOrderItemForm = {
+  productId: string;
+  quantity: string;
+  unitPrice: string;
+};
+
+type ReturnOrderForm = {
+  supplierId: string;
+  note: string;
+  items: ReturnOrderItemForm[];
+};
+
 type HoverPreview = {
   src: string;
   name: string;
@@ -102,6 +127,27 @@ type Supplier = {
   name: string;
 };
 
+type TransferOrder = {
+  id: string;
+  reason: string;
+  note: string;
+  createdBy: string;
+  createdAt: string;
+  itemsCount: number;
+  totalQuantity: number;
+};
+
+type ReturnOrder = {
+  id: string;
+  supplierName: string;
+  totalAmount: number;
+  note: string;
+  createdBy: string;
+  createdAt: string;
+  itemsCount: number;
+  totalQuantity: number;
+};
+
 const emptyForm: ProductForm = {
   name: "",
   imageUrl: "",
@@ -111,6 +157,20 @@ const emptyForm: ProductForm = {
   price: "",
   supplierId: "",
 };
+
+const createEmptyTransferOrderForm = (): TransferOrderForm => ({
+  reason: "",
+  note: "",
+  items: [{ productId: "", quantity: "1" }],
+});
+
+const createEmptyReturnOrderForm = (): ReturnOrderForm => ({
+  supplierId: "",
+  note: "",
+  items: [{ productId: "", quantity: "1", unitPrice: "0" }],
+});
+
+const NO_SUPPLIER_VALUE = "__none__";
 
 const formatCurrency = (value: number) =>
   value.toLocaleString("vi-VN", {
@@ -246,20 +306,38 @@ const normalizeProductPayload = (payload: unknown): Product | null => {
 export default function StoragePage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [transferOrders, setTransferOrders] = useState<TransferOrder[]>([]);
+  const [returnOrders, setReturnOrders] = useState<ReturnOrder[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [stockFilter, setStockFilter] = useState<StockFilter>("all");
   const [form, setForm] = useState<ProductForm>(emptyForm);
+  const [transferOrderForm, setTransferOrderForm] = useState<TransferOrderForm>(
+    createEmptyTransferOrderForm
+  );
+  const [returnOrderForm, setReturnOrderForm] = useState<ReturnOrderForm>(
+    createEmptyReturnOrderForm
+  );
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isProductDialogOpen, setIsProductDialogOpen] = useState(false);
+  const [isTransferOrderDialogOpen, setIsTransferOrderDialogOpen] = useState(false);
+  const [isReturnOrderDialogOpen, setIsReturnOrderDialogOpen] = useState(false);
   const [imageFileName, setImageFileName] = useState("");
   const [hoverPreview, setHoverPreview] = useState<HoverPreview | null>(null);
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
   const [isSubmittingProduct, setIsSubmittingProduct] = useState(false);
+  const [isSubmittingTransferOrder, setIsSubmittingTransferOrder] = useState(false);
+  const [isSubmittingReturnOrder, setIsSubmittingReturnOrder] = useState(false);
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
   const [productsLoadError, setProductsLoadError] = useState("");
+  const [transferOrdersLoadError, setTransferOrdersLoadError] = useState("");
+  const [returnOrdersLoadError, setReturnOrdersLoadError] = useState("");
+  const [isLoadingTransferOrders, setIsLoadingTransferOrders] = useState(true);
+  const [isLoadingReturnOrders, setIsLoadingReturnOrders] = useState(true);
   const [error, setError] = useState("");
+  const [transferOrderError, setTransferOrderError] = useState("");
+  const [returnOrderError, setReturnOrderError] = useState("");
   const imageInputRef = useRef<HTMLInputElement | null>(null);
 
   const totalQuantity = useMemo(
@@ -293,6 +371,43 @@ export default function StoragePage() {
       return haystack.includes(keyword);
     });
   }, [products, searchQuery, stockFilter]);
+
+  const productsById = useMemo(
+    () => new Map(products.map((product) => [product.id, product])),
+    [products]
+  );
+
+  const transferOrderTotalQuantityPreview = useMemo(
+    () =>
+      transferOrderForm.items.reduce((sum, item) => {
+        const quantity = Number(item.quantity);
+        if (!Number.isFinite(quantity) || quantity <= 0) {
+          return sum;
+        }
+        return sum + Math.trunc(quantity);
+      }, 0),
+    [transferOrderForm.items]
+  );
+
+  const returnOrderTotalAmountPreview = useMemo(
+    () =>
+      returnOrderForm.items.reduce((sum, item) => {
+        const quantity = Number(item.quantity);
+        const unitPrice = Number(item.unitPrice);
+
+        if (
+          !Number.isFinite(quantity) ||
+          quantity <= 0 ||
+          !Number.isFinite(unitPrice) ||
+          unitPrice <= 0
+        ) {
+          return sum;
+        }
+
+        return sum + Math.trunc(quantity) * unitPrice;
+      }, 0),
+    [returnOrderForm.items]
+  );
 
   const loadProductsFromApi = async () => {
     setIsLoadingProducts(true);
@@ -335,19 +450,108 @@ export default function StoragePage() {
       });
       const payload = await response.json().catch(() => ({}));
       if (response.ok && Array.isArray(payload)) {
-        setSuppliers(payload.map((s: any) => ({
-          id: readString(s.id).trim(),
-          name: readString(s.name).trim(),
-        })));
+        const nextSuppliers = payload
+          .filter((item): item is Record<string, unknown> => isObject(item))
+          .map((item) => ({
+            id: readString(item.id).trim(),
+            name: readString(item.name).trim(),
+          }))
+          .filter((item) => Boolean(item.id) && Boolean(item.name));
+        setSuppliers(nextSuppliers);
       }
     } catch {
       // Keep it simple and ignore supplier load failures for now
     }
   };
 
+  const loadTransferOrdersFromApi = async () => {
+    setIsLoadingTransferOrders(true);
+
+    try {
+      const response = await fetch("/api/export-orders", {
+        method: "GET",
+        cache: "no-store",
+      });
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        const message =
+          extractErrorMessage(payload) || "Không thể tải danh sách đơn chuyển.";
+        setTransferOrdersLoadError(message);
+        return;
+      }
+
+      const orders = Array.isArray(payload)
+        ? payload
+            .filter((item): item is Record<string, unknown> => isObject(item))
+            .map((item) => ({
+              id: readString(item.id).trim(),
+              reason: readString(item.reason).trim(),
+              note: readString(item.note).trim(),
+              createdBy: readString(item.createdBy).trim(),
+              createdAt: readString(item.createdAt).trim(),
+              itemsCount: Math.max(0, Math.trunc(readNumber(item.itemsCount))),
+              totalQuantity: Math.max(0, Math.trunc(readNumber(item.totalQuantity))),
+            }))
+            .filter((item) => Boolean(item.id))
+        : [];
+
+      setTransferOrders(orders);
+      setTransferOrdersLoadError("");
+    } catch {
+      setTransferOrdersLoadError("Không thể kết nối API đơn chuyển.");
+    } finally {
+      setIsLoadingTransferOrders(false);
+    }
+  };
+
+  const loadReturnOrdersFromApi = async () => {
+    setIsLoadingReturnOrders(true);
+
+    try {
+      const response = await fetch("/api/import-orders", {
+        method: "GET",
+        cache: "no-store",
+      });
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        const message =
+          extractErrorMessage(payload) || "Không thể tải danh sách đơn trả.";
+        setReturnOrdersLoadError(message);
+        return;
+      }
+
+      const orders = Array.isArray(payload)
+        ? payload
+            .filter((item): item is Record<string, unknown> => isObject(item))
+            .map((item) => ({
+              id: readString(item.id).trim(),
+              supplierName: readString(item.supplierName).trim(),
+              totalAmount: readNumber(item.totalAmount),
+              note: readString(item.note).trim(),
+              createdBy: readString(item.createdBy).trim(),
+              createdAt: readString(item.createdAt).trim(),
+              itemsCount: Math.max(0, Math.trunc(readNumber(item.itemsCount))),
+              totalQuantity: Math.max(0, Math.trunc(readNumber(item.totalQuantity))),
+            }))
+            .filter((item) => Boolean(item.id))
+        : [];
+
+      setReturnOrders(orders);
+      setReturnOrdersLoadError("");
+    } catch {
+      setReturnOrdersLoadError("Không thể kết nối API đơn trả.");
+    } finally {
+      setIsLoadingReturnOrders(false);
+    }
+  };
+
   useEffect(() => {
     void loadProductsFromApi();
     void loadSuppliersFromApi();
+    void loadTransferOrdersFromApi();
+    void loadReturnOrdersFromApi();
   }, []);
 
   const handleChange = (field: keyof ProductForm, value: string) => {
@@ -362,6 +566,16 @@ export default function StoragePage() {
     if (imageInputRef.current) {
       imageInputRef.current.value = "";
     }
+  };
+
+  const resetTransferOrderForm = () => {
+    setTransferOrderForm(createEmptyTransferOrderForm());
+    setTransferOrderError("");
+  };
+
+  const resetReturnOrderForm = () => {
+    setReturnOrderForm(createEmptyReturnOrderForm());
+    setReturnOrderError("");
   };
 
   const handleImageUpload = (event: ChangeEvent<HTMLInputElement>) => {
@@ -550,6 +764,278 @@ export default function StoragePage() {
     }
   };
 
+  const handleTransferOrderFieldChange = (
+    field: keyof Omit<TransferOrderForm, "items">,
+    value: string
+  ) => {
+    setTransferOrderForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleTransferOrderItemChange = (
+    index: number,
+    field: keyof TransferOrderItemForm,
+    value: string
+  ) => {
+    setTransferOrderForm((prev) => ({
+      ...prev,
+      items: prev.items.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, [field]: value } : item
+      ),
+    }));
+  };
+
+  const handleAddTransferOrderItem = () => {
+    setTransferOrderForm((prev) => ({
+      ...prev,
+      items: [...prev.items, { productId: "", quantity: "1" }],
+    }));
+  };
+
+  const handleRemoveTransferOrderItem = (index: number) => {
+    setTransferOrderForm((prev) => {
+      if (prev.items.length <= 1) {
+        return { ...prev, items: [{ productId: "", quantity: "1" }] };
+      }
+
+      return {
+        ...prev,
+        items: prev.items.filter((_, itemIndex) => itemIndex !== index),
+      };
+    });
+  };
+
+  const validateTransferOrderCreateForm = () => {
+    if (transferOrderForm.items.length === 0) {
+      return "Vui lòng thêm ít nhất một sản phẩm chuyển kho.";
+    }
+
+    const selectedProductIds = new Set<string>();
+
+    for (let index = 0; index < transferOrderForm.items.length; index += 1) {
+      const item = transferOrderForm.items[index];
+      const rowNumber = index + 1;
+      const productId = item.productId.trim();
+
+      if (!productId) {
+        return `Vui lòng chọn sản phẩm ở dòng ${rowNumber}.`;
+      }
+
+      if (selectedProductIds.has(productId)) {
+        return `Sản phẩm ở dòng ${rowNumber} đang bị trùng, vui lòng gộp số lượng vào một dòng.`;
+      }
+      selectedProductIds.add(productId);
+
+      const quantity = Number(item.quantity);
+      if (!Number.isInteger(quantity) || quantity <= 0) {
+        return `Số lượng ở dòng ${rowNumber} phải là số nguyên lớn hơn 0.`;
+      }
+
+      const selectedProduct = productsById.get(productId);
+      if (!selectedProduct) {
+        return `Không tìm thấy sản phẩm ở dòng ${rowNumber}. Vui lòng chọn lại.`;
+      }
+
+      if (quantity > selectedProduct.quantity) {
+        return `Số lượng chuyển của "${selectedProduct.name}" vượt tồn kho hiện tại (${selectedProduct.quantity}).`;
+      }
+    }
+
+    return "";
+  };
+
+  const handleSubmitTransferOrder = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const validationError = validateTransferOrderCreateForm();
+    if (validationError) {
+      setTransferOrderError(validationError);
+      return;
+    }
+
+    const payload = {
+      reason: transferOrderForm.reason.trim(),
+      note: transferOrderForm.note.trim(),
+      items: transferOrderForm.items.map((item) => ({
+        productId: item.productId,
+        quantity: Number(item.quantity),
+      })),
+    };
+
+    setTransferOrderError("");
+    setIsSubmittingTransferOrder(true);
+
+    try {
+      const response = await fetch("/api/export-orders", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const responsePayload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const message =
+          extractErrorMessage(responsePayload) || "Không thể thêm đơn chuyển qua API.";
+        setTransferOrderError(message);
+        return;
+      }
+
+      await Promise.all([loadTransferOrdersFromApi(), loadProductsFromApi()]);
+      setTransferOrdersLoadError("");
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("notifications:refresh"));
+      }
+
+      resetTransferOrderForm();
+      setIsTransferOrderDialogOpen(false);
+      toast.success("Đã thêm đơn chuyển mới.");
+    } catch {
+      setTransferOrderError("Không thể kết nối API thêm đơn chuyển.");
+    } finally {
+      setIsSubmittingTransferOrder(false);
+    }
+  };
+
+  const handleReturnOrderFieldChange = (
+    field: keyof Omit<ReturnOrderForm, "items">,
+    value: string
+  ) => {
+    setReturnOrderForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleReturnOrderItemChange = (
+    index: number,
+    field: keyof ReturnOrderItemForm,
+    value: string
+  ) => {
+    setReturnOrderForm((prev) => ({
+      ...prev,
+      items: prev.items.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, [field]: value } : item
+      ),
+    }));
+  };
+
+  const handleAddReturnOrderItem = () => {
+    setReturnOrderForm((prev) => ({
+      ...prev,
+      items: [...prev.items, { productId: "", quantity: "1", unitPrice: "0" }],
+    }));
+  };
+
+  const handleRemoveReturnOrderItem = (index: number) => {
+    setReturnOrderForm((prev) => {
+      if (prev.items.length <= 1) {
+        return {
+          ...prev,
+          items: [{ productId: "", quantity: "1", unitPrice: "0" }],
+        };
+      }
+
+      return {
+        ...prev,
+        items: prev.items.filter((_, itemIndex) => itemIndex !== index),
+      };
+    });
+  };
+
+  const validateReturnOrderCreateForm = () => {
+    if (returnOrderForm.items.length === 0) {
+      return "Vui lòng thêm ít nhất một sản phẩm nhập kho.";
+    }
+
+    const selectedProductIds = new Set<string>();
+
+    for (let index = 0; index < returnOrderForm.items.length; index += 1) {
+      const item = returnOrderForm.items[index];
+      const rowNumber = index + 1;
+      const productId = item.productId.trim();
+
+      if (!productId) {
+        return `Vui lòng chọn sản phẩm ở dòng ${rowNumber}.`;
+      }
+
+      if (selectedProductIds.has(productId)) {
+        return `Sản phẩm ở dòng ${rowNumber} đang bị trùng, vui lòng gộp số lượng vào một dòng.`;
+      }
+      selectedProductIds.add(productId);
+
+      if (!productsById.has(productId)) {
+        return `Không tìm thấy sản phẩm ở dòng ${rowNumber}. Vui lòng chọn lại.`;
+      }
+
+      const quantity = Number(item.quantity);
+      if (!Number.isInteger(quantity) || quantity <= 0) {
+        return `Số lượng ở dòng ${rowNumber} phải là số nguyên lớn hơn 0.`;
+      }
+
+      const unitPrice = Number(item.unitPrice);
+      if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
+        return `Đơn giá ở dòng ${rowNumber} phải lớn hơn 0.`;
+      }
+    }
+
+    return "";
+  };
+
+  const handleSubmitReturnOrder = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const validationError = validateReturnOrderCreateForm();
+    if (validationError) {
+      setReturnOrderError(validationError);
+      return;
+    }
+
+    const payload = {
+      supplierId: returnOrderForm.supplierId.trim(),
+      note: returnOrderForm.note.trim(),
+      items: returnOrderForm.items.map((item) => ({
+        productId: item.productId,
+        quantity: Number(item.quantity),
+        unitPrice: Number(item.unitPrice),
+      })),
+    };
+
+    setReturnOrderError("");
+    setIsSubmittingReturnOrder(true);
+
+    try {
+      const response = await fetch("/api/import-orders", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const responsePayload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const message =
+          extractErrorMessage(responsePayload) || "Không thể thêm đơn trả qua API.";
+        setReturnOrderError(message);
+        return;
+      }
+
+      await Promise.all([loadReturnOrdersFromApi(), loadProductsFromApi()]);
+      setReturnOrdersLoadError("");
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("notifications:refresh"));
+      }
+
+      resetReturnOrderForm();
+      setIsReturnOrderDialogOpen(false);
+      toast.success("Đã thêm đơn trả mới.");
+    } catch {
+      setReturnOrderError("Không thể kết nối API thêm đơn trả.");
+    } finally {
+      setIsSubmittingReturnOrder(false);
+    }
+  };
+
   const handleEdit = (product: Product) => {
     const currentImageName = product.imageUrl
       ? product.imageUrl.startsWith("data:")
@@ -578,6 +1064,16 @@ export default function StoragePage() {
   const handleOpenCreateProductDialog = () => {
     resetForm();
     setIsProductDialogOpen(true);
+  };
+
+  const handleOpenCreateTransferOrder = () => {
+    resetTransferOrderForm();
+    setIsTransferOrderDialogOpen(true);
+  };
+
+  const handleOpenCreateReturnOrder = () => {
+    resetReturnOrderForm();
+    setIsReturnOrderDialogOpen(true);
   };
 
   const handleOpenDeleteDialog = (product: Product) => {
@@ -645,237 +1141,406 @@ export default function StoragePage() {
         </p>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-3">
-        <Card className="border border-border/70">
-          <CardHeader>
-            <CardDescription>Tổng sản phẩm</CardDescription>
-            <CardTitle>{products.length}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card className="border border-border/70">
-          <CardHeader>
-            <CardDescription>Tổng tồn kho</CardDescription>
-            <CardTitle>{totalQuantity}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card className="border border-border/70">
-          <CardHeader>
-            <CardDescription>Giá trị tồn kho</CardDescription>
-            <CardTitle>{formatCurrency(totalInventoryValue)}</CardTitle>
-          </CardHeader>
-        </Card>
-      </section>
-
-      <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-        <div className="relative w-full sm:max-w-sm">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="Tìm theo tên, SKU, danh mục..."
-            className="pl-8 pr-8"
-          />
-          {searchQuery ? (
-            <button
-              type="button"
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
-              onClick={() => setSearchQuery("")}
-              aria-label="Xóa từ khóa tìm kiếm"
-            >
-              <X className="size-4" />
-            </button>
-          ) : null}
-        </div>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <Select
-            value={stockFilter}
-            onValueChange={(value) => setStockFilter(value as StockFilter)}
+      <Tabs defaultValue="inventory" className="w-full flex-col gap-4">
+        <TabsList className="h-auto w-fit max-w-full justify-start gap-1 overflow-x-auto rounded-xl bg-muted/70 p-1">
+          <TabsTrigger
+            value="inventory"
+            className="h-9 flex-none cursor-pointer px-4 text-sm text-muted-foreground transition-colors data-[state=active]:bg-background data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-sm data-active:bg-background data-active:font-semibold data-active:text-foreground data-active:shadow-sm"
           >
-            <div className="relative w-full sm:w-[220px]">
-              <SlidersHorizontal className="pointer-events-none absolute left-3 top-1/2 z-10 size-4 -translate-y-1/2 text-muted-foreground" />
-              <SelectTrigger className="w-full cursor-pointer pl-9">
-                <SelectValue placeholder="Lọc theo trạng thái" />
-              </SelectTrigger>
-            </div>
-            <SelectContent align="end" className="w-[220px]">
-              <SelectItem value="all" className="cursor-pointer">
-                Tất cả trạng thái
-              </SelectItem>
-              <SelectItem value="stable" className="cursor-pointer">
-                Ổn định
-              </SelectItem>
-              <SelectItem value="low" className="cursor-pointer">
-                Sắp hết
-              </SelectItem>
-              <SelectItem value="out" className="cursor-pointer">
-                Hết hàng
-              </SelectItem>
-            </SelectContent>
-          </Select>
-          <p className="text-xs text-muted-foreground">
-            Hiển thị {filteredProducts.length}/{products.length} sản phẩm
-          </p>
-        </div>
-      </div>
+            Tồn kho
+          </TabsTrigger>
+          <TabsTrigger
+            value="transfer-orders"
+            className="h-9 flex-none cursor-pointer px-4 text-sm text-muted-foreground transition-colors data-[state=active]:bg-background data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-sm data-active:bg-background data-active:font-semibold data-active:text-foreground data-active:shadow-sm"
+          >
+            Đơn chuyển
+          </TabsTrigger>
+          <TabsTrigger
+            value="return-orders"
+            className="h-9 flex-none cursor-pointer px-4 text-sm text-muted-foreground transition-colors data-[state=active]:bg-background data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-sm data-active:bg-background data-active:font-semibold data-active:text-foreground data-active:shadow-sm"
+          >
+            Đơn trả
+          </TabsTrigger>
+        </TabsList>
 
-      <Card className="border border-border/70">
-        <CardHeader className="border-b border-border/70">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <CardTitle>Danh sách sản phẩm</CardTitle>
-              <CardDescription>
-                Chỉnh sửa hoặc xóa trực tiếp từng sản phẩm trong bảng.
-              </CardDescription>
+        <TabsContent value="inventory" className="mt-0 space-y-6">
+          <section className="grid gap-4 md:grid-cols-3">
+            <Card className="border border-border/70">
+              <CardHeader>
+                <CardDescription>Tổng sản phẩm</CardDescription>
+                <CardTitle>{products.length}</CardTitle>
+              </CardHeader>
+            </Card>
+            <Card className="border border-border/70">
+              <CardHeader>
+                <CardDescription>Tổng tồn kho</CardDescription>
+                <CardTitle>{totalQuantity}</CardTitle>
+              </CardHeader>
+            </Card>
+            <Card className="border border-border/70">
+              <CardHeader>
+                <CardDescription>Giá trị tồn kho</CardDescription>
+                <CardTitle>{formatCurrency(totalInventoryValue)}</CardTitle>
+              </CardHeader>
+            </Card>
+          </section>
+
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+            <div className="relative w-full sm:max-w-sm">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Tìm theo tên, SKU, danh mục..."
+                className="pl-8 pr-8"
+              />
+              {searchQuery ? (
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+                  onClick={() => setSearchQuery("")}
+                  aria-label="Xóa từ khóa tìm kiếm"
+                >
+                  <X className="size-4" />
+                </button>
+              ) : null}
             </div>
-            <Button
-              type="button"
-              className="cursor-pointer"
-              disabled={isSubmittingProduct}
-              onClick={handleOpenCreateProductDialog}
-            >
-              <Plus className="size-4" />
-              Thêm sản phẩm
-            </Button>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <Select
+                value={stockFilter}
+                onValueChange={(value) => setStockFilter(value as StockFilter)}
+              >
+                <div className="relative w-full sm:w-[220px]">
+                  <SlidersHorizontal className="pointer-events-none absolute left-3 top-1/2 z-10 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <SelectTrigger className="w-full cursor-pointer pl-9">
+                    <SelectValue placeholder="Lọc theo trạng thái" />
+                  </SelectTrigger>
+                </div>
+                <SelectContent align="end" className="w-[220px]">
+                  <SelectItem value="all" className="cursor-pointer">
+                    Tất cả trạng thái
+                  </SelectItem>
+                  <SelectItem value="stable" className="cursor-pointer">
+                    Ổn định
+                  </SelectItem>
+                  <SelectItem value="low" className="cursor-pointer">
+                    Sắp hết
+                  </SelectItem>
+                  <SelectItem value="out" className="cursor-pointer">
+                    Hết hàng
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Hiển thị {filteredProducts.length}/{products.length} sản phẩm
+              </p>
+            </div>
           </div>
-        </CardHeader>
-        <CardContent className="pt-3">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-14">STT</TableHead>
-                <TableHead className="w-28">Hình ảnh</TableHead>
-                <TableHead>Tên</TableHead>
-                <TableHead>SKU</TableHead>
-                <TableHead>Nhà cung cấp</TableHead>
-                <TableHead>Danh mục</TableHead>
-                <TableHead>Số lượng</TableHead>
-                <TableHead>Giá</TableHead>
-                <TableHead className="min-w-[180px]">Thời gian tạo</TableHead>
-                <TableHead>Trạng thái</TableHead>
-                <TableHead className="text-right">Thao tác</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoadingProducts ? (
-                <TableRow>
-                  <TableCell colSpan={11} className="py-6 text-center text-muted-foreground">
-                    Đang tải danh sách sản phẩm...
-                  </TableCell>
-                </TableRow>
-              ) : products.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={11} className="py-6 text-center text-muted-foreground">
-                    Chưa có sản phẩm nào trong kho.
-                  </TableCell>
-                </TableRow>
-              ) : filteredProducts.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={11} className="py-6 text-center text-muted-foreground">
-                    Không tìm thấy sản phẩm phù hợp với từ khóa: {searchQuery}.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredProducts.map((product, index) => {
-                  const stock = getStockBadge(product.quantity);
 
-                  return (
-                    <TableRow key={product.id}>
-                      <TableCell className="text-muted-foreground">{index + 1}</TableCell>
-                      <TableCell>
-                        <div
-                          className="group relative inline-flex"
-                          onMouseEnter={(event) => handleHoverPreview(event, product)}
-                          onMouseMove={(event) => handleHoverPreview(event, product)}
-                          onMouseLeave={clearHoverPreview}
-                        >
-                          <div className="size-11 overflow-hidden border border-border/70 bg-muted">
-                            {product.imageUrl ? (
-                              <img
-                                src={product.imageUrl}
-                                alt={product.name}
-                                loading="lazy"
-                                className="size-full object-cover transition-transform duration-200 group-hover:scale-110"
-                              />
-                            ) : (
-                              <div className="flex size-full items-center justify-center text-xs font-medium text-muted-foreground">
-                                {getProductInitials(product.name)}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="font-medium">{product.name}</TableCell>
-                      <TableCell>{product.sku}</TableCell>
-                      <TableCell>{product.supplierName || "—"}</TableCell>
-                      <TableCell>{product.category}</TableCell>
-                      <TableCell>{product.quantity}</TableCell>
-                      <TableCell>{formatCurrency(product.price)}</TableCell>
-                      <TableCell>{formatDateTime(product.createdAt)}</TableCell>
-                      <TableCell>
-                        <Badge variant={stock.variant}>{stock.label}</Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            className="cursor-pointer"
-                            disabled={isSubmittingProduct || deletingProductId === product.id}
-                            onClick={() => handleEdit(product)}
-                          >
-                            <Pencil className="size-3.5" />
-                            Sửa
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="destructive"
-                            className="cursor-pointer"
-                            disabled={isSubmittingProduct || deletingProductId === product.id}
-                            onClick={() => handleOpenDeleteDialog(product)}
-                          >
-                            <Trash2 className="size-3.5" />
-                            {deletingProductId === product.id ? "Đang xóa" : "Xóa"}
-                          </Button>
-                        </div>
+          <Card className="border border-border/70">
+            <CardHeader className="border-b border-border/70">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <CardTitle>Danh sách sản phẩm</CardTitle>
+                  <CardDescription>
+                    Chỉnh sửa hoặc xóa trực tiếp từng sản phẩm trong bảng.
+                  </CardDescription>
+                </div>
+                <Button
+                  type="button"
+                  className="cursor-pointer"
+                  disabled={isSubmittingProduct}
+                  onClick={handleOpenCreateProductDialog}
+                >
+                  <Plus className="size-4" />
+                  Thêm sản phẩm
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-3">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-14">STT</TableHead>
+                    <TableHead className="w-28">Hình ảnh</TableHead>
+                    <TableHead>Tên</TableHead>
+                    <TableHead>SKU</TableHead>
+                    <TableHead>Nhà cung cấp</TableHead>
+                    <TableHead>Danh mục</TableHead>
+                    <TableHead>Số lượng</TableHead>
+                    <TableHead>Giá</TableHead>
+                    <TableHead className="min-w-[180px]">Thời gian tạo</TableHead>
+                    <TableHead>Trạng thái</TableHead>
+                    <TableHead className="text-right">Thao tác</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {isLoadingProducts ? (
+                    <TableRow>
+                      <TableCell colSpan={11} className="py-6 text-center text-muted-foreground">
+                        Đang tải danh sách sản phẩm...
                       </TableCell>
                     </TableRow>
-                  );
-                })
-              )}
-            </TableBody>
-          </Table>
+                  ) : products.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={11} className="py-6 text-center text-muted-foreground">
+                        Chưa có sản phẩm nào trong kho.
+                      </TableCell>
+                    </TableRow>
+                  ) : filteredProducts.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={11} className="py-6 text-center text-muted-foreground">
+                        Không tìm thấy sản phẩm phù hợp với từ khóa: {searchQuery}.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    filteredProducts.map((product, index) => {
+                      const stock = getStockBadge(product.quantity);
 
-          {productsLoadError ? (
-            <p className="mt-3 text-sm text-destructive">{productsLoadError}</p>
+                      return (
+                        <TableRow key={product.id}>
+                          <TableCell className="text-muted-foreground">{index + 1}</TableCell>
+                          <TableCell>
+                            <div
+                              className="group relative inline-flex"
+                              onMouseEnter={(event) => handleHoverPreview(event, product)}
+                              onMouseMove={(event) => handleHoverPreview(event, product)}
+                              onMouseLeave={clearHoverPreview}
+                            >
+                              <div className="size-11 overflow-hidden border border-border/70 bg-muted">
+                                {product.imageUrl ? (
+                                  <img
+                                    src={product.imageUrl}
+                                    alt={product.name}
+                                    loading="lazy"
+                                    className="size-full object-cover transition-transform duration-200 group-hover:scale-110"
+                                  />
+                                ) : (
+                                  <div className="flex size-full items-center justify-center text-xs font-medium text-muted-foreground">
+                                    {getProductInitials(product.name)}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="font-medium">{product.name}</TableCell>
+                          <TableCell>{product.sku}</TableCell>
+                          <TableCell>{product.supplierName || "—"}</TableCell>
+                          <TableCell>{product.category}</TableCell>
+                          <TableCell>{product.quantity}</TableCell>
+                          <TableCell>{formatCurrency(product.price)}</TableCell>
+                          <TableCell>{formatDateTime(product.createdAt)}</TableCell>
+                          <TableCell>
+                            <Badge variant={stock.variant}>{stock.label}</Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="cursor-pointer"
+                                disabled={isSubmittingProduct || deletingProductId === product.id}
+                                onClick={() => handleEdit(product)}
+                              >
+                                <Pencil className="size-3.5" />
+                                Sửa
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="destructive"
+                                className="cursor-pointer"
+                                disabled={isSubmittingProduct || deletingProductId === product.id}
+                                onClick={() => handleOpenDeleteDialog(product)}
+                              >
+                                <Trash2 className="size-3.5" />
+                                {deletingProductId === product.id ? "Đang xóa" : "Xóa"}
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
+                </TableBody>
+              </Table>
+
+              {productsLoadError ? (
+                <p className="mt-3 text-sm text-destructive">{productsLoadError}</p>
+              ) : null}
+            </CardContent>
+          </Card>
+
+          {hoverPreview ? (
+            <div
+              className="pointer-events-none fixed z-[100] hidden md:block"
+              style={{
+                left: `${hoverPreview.x}px`,
+                top: `${hoverPreview.y}px`,
+              }}
+            >
+              <div className="w-[22.5rem] overflow-hidden rounded-xl border border-border/80 bg-background shadow-2xl ring-1 ring-black/10">
+                <div className="flex h-64 items-center justify-center bg-muted/35 p-2">
+                  <img
+                    src={hoverPreview.src}
+                    alt={hoverPreview.name}
+                    loading="lazy"
+                    className="max-h-full w-full object-contain"
+                  />
+                </div>
+                <div className="border-t border-border/70 px-3 py-2 text-xs font-medium text-foreground">
+                  {hoverPreview.name}
+                </div>
+              </div>
+            </div>
           ) : null}
-        </CardContent>
-      </Card>
+        </TabsContent>
 
-      {hoverPreview ? (
-        <div
-          className="pointer-events-none fixed z-[100] hidden md:block"
-          style={{
-            left: `${hoverPreview.x}px`,
-            top: `${hoverPreview.y}px`,
-          }}
-        >
-          <div className="w-[22.5rem] overflow-hidden rounded-xl border border-border/80 bg-background shadow-2xl ring-1 ring-black/10">
-            <div className="flex h-64 items-center justify-center bg-muted/35 p-2">
-              <img
-                src={hoverPreview.src}
-                alt={hoverPreview.name}
-                loading="lazy"
-                className="max-h-full w-full object-contain"
-              />
-            </div>
-            <div className="border-t border-border/70 px-3 py-2 text-xs font-medium text-foreground">
-              {hoverPreview.name}
-            </div>
-          </div>
-        </div>
-      ) : null}
+        <TabsContent value="transfer-orders" className="mt-0">
+          <Card className="border border-border/70">
+            <CardHeader className="border-b border-border/70">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <CardTitle>Đơn chuyển kho</CardTitle>
+                  <CardDescription>
+                    Danh sách phiếu xuất kho dùng để chuyển hàng nội bộ.
+                  </CardDescription>
+                </div>
+                <Button
+                  type="button"
+                  className="cursor-pointer"
+                  onClick={handleOpenCreateTransferOrder}
+                >
+                  <Plus className="size-4" />
+                  Thêm đơn
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-3">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-14">STT</TableHead>
+                    <TableHead className="min-w-[170px]">Mã đơn</TableHead>
+                    <TableHead className="min-w-[180px]">Thời gian</TableHead>
+                    <TableHead>Người tạo</TableHead>
+                    <TableHead>Số mặt hàng</TableHead>
+                    <TableHead>Tổng SL</TableHead>
+                    <TableHead>Lý do</TableHead>
+                    <TableHead>Ghi chú</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {isLoadingTransferOrders ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="py-6 text-center text-muted-foreground">
+                        Đang tải đơn chuyển...
+                      </TableCell>
+                    </TableRow>
+                  ) : transferOrders.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="py-6 text-center text-muted-foreground">
+                        Chưa có đơn chuyển nào.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    transferOrders.map((order, index) => (
+                      <TableRow key={order.id}>
+                        <TableCell className="text-muted-foreground">{index + 1}</TableCell>
+                        <TableCell className="font-mono text-xs">{order.id}</TableCell>
+                        <TableCell>{formatDateTime(order.createdAt)}</TableCell>
+                        <TableCell>{order.createdBy || "Không rõ"}</TableCell>
+                        <TableCell>{order.itemsCount}</TableCell>
+                        <TableCell>{order.totalQuantity}</TableCell>
+                        <TableCell>{order.reason || "—"}</TableCell>
+                        <TableCell>{order.note || "—"}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+
+              {transferOrdersLoadError ? (
+                <p className="mt-3 text-sm text-destructive">{transferOrdersLoadError}</p>
+              ) : null}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="return-orders" className="mt-0">
+          <Card className="border border-border/70">
+            <CardHeader className="border-b border-border/70">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <CardTitle>Đơn trả kho</CardTitle>
+                  <CardDescription>
+                    Danh sách phiếu nhập kho từ các đợt trả hàng hoặc hoàn kho.
+                  </CardDescription>
+                </div>
+                <Button
+                  type="button"
+                  className="cursor-pointer"
+                  onClick={handleOpenCreateReturnOrder}
+                >
+                  <Plus className="size-4" />
+                  Thêm đơn
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-3">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-14">STT</TableHead>
+                    <TableHead className="min-w-[170px]">Mã đơn</TableHead>
+                    <TableHead className="min-w-[180px]">Thời gian</TableHead>
+                    <TableHead>Nhà cung cấp</TableHead>
+                    <TableHead>Người tạo</TableHead>
+                    <TableHead>Số mặt hàng</TableHead>
+                    <TableHead>Tổng SL</TableHead>
+                    <TableHead>Tổng tiền</TableHead>
+                    <TableHead>Ghi chú</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {isLoadingReturnOrders ? (
+                    <TableRow>
+                      <TableCell colSpan={9} className="py-6 text-center text-muted-foreground">
+                        Đang tải đơn trả...
+                      </TableCell>
+                    </TableRow>
+                  ) : returnOrders.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={9} className="py-6 text-center text-muted-foreground">
+                        Chưa có đơn trả nào.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    returnOrders.map((order, index) => (
+                      <TableRow key={order.id}>
+                        <TableCell className="text-muted-foreground">{index + 1}</TableCell>
+                        <TableCell className="font-mono text-xs">{order.id}</TableCell>
+                        <TableCell>{formatDateTime(order.createdAt)}</TableCell>
+                        <TableCell>{order.supplierName || "—"}</TableCell>
+                        <TableCell>{order.createdBy || "Không rõ"}</TableCell>
+                        <TableCell>{order.itemsCount}</TableCell>
+                        <TableCell>{order.totalQuantity}</TableCell>
+                        <TableCell>{formatCurrency(order.totalAmount)}</TableCell>
+                        <TableCell>{order.note || "—"}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+
+              {returnOrdersLoadError ? (
+                <p className="mt-3 text-sm text-destructive">{returnOrdersLoadError}</p>
+              ) : null}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={handleDeleteDialogOpenChange}>
         <AlertDialogContent
@@ -951,7 +1616,7 @@ export default function StoragePage() {
           <form onSubmit={handleSubmit} className="space-y-5 px-6 py-5">
             <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
               <div className="space-y-3">
-                <div className="rounded-xl border border-border/70 bg-muted/30 p-4">
+                <div className="rounded-xl bg-muted/30 p-4">
                   <div className="mb-3 flex items-center justify-between gap-2">
                     <p className="text-sm font-medium">Hình ảnh sản phẩm</p>
                     {form.imageUrl ? (
@@ -1141,6 +1806,386 @@ export default function StoragePage() {
                   : editingId
                     ? "Lưu thay đổi"
                     : "Thêm sản phẩm"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={isTransferOrderDialogOpen}
+        onOpenChange={(open) => {
+          if (isSubmittingTransferOrder) {
+            return;
+          }
+
+          setIsTransferOrderDialogOpen(open);
+          if (!open) {
+            resetTransferOrderForm();
+          }
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto p-0 sm:max-w-3xl">
+          <DialogHeader className="space-y-2 border-b border-border/70 px-6 pt-6 pb-4">
+            <DialogTitle className="text-xl">Thêm đơn chuyển kho</DialogTitle>
+            <DialogDescription>
+              Tạo phiếu xuất kho nội bộ. Chọn sản phẩm, số lượng và ghi chú nếu cần.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSubmitTransferOrder} className="space-y-5 px-6 py-5">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <label htmlFor="transfer-reason" className="text-sm font-medium">
+                  Lý do chuyển kho
+                </label>
+                <Input
+                  id="transfer-reason"
+                  placeholder="VD: Điều phối hàng giữa các kho"
+                  value={transferOrderForm.reason}
+                  onChange={(event) =>
+                    handleTransferOrderFieldChange("reason", event.target.value)
+                  }
+                />
+              </div>
+
+              <div className="space-y-2 sm:col-span-2">
+                <label htmlFor="transfer-note" className="text-sm font-medium">
+                  Ghi chú
+                </label>
+                <Textarea
+                  id="transfer-note"
+                  placeholder="Ghi chú thêm (nếu có)"
+                  value={transferOrderForm.note}
+                  onChange={(event) =>
+                    handleTransferOrderFieldChange("note", event.target.value)
+                  }
+                />
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-border/70 bg-background p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <p className="text-sm font-medium">Danh sách sản phẩm chuyển</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="cursor-pointer"
+                  disabled={isSubmittingTransferOrder}
+                  onClick={handleAddTransferOrderItem}
+                >
+                  <Plus className="size-3.5" />
+                  Thêm dòng
+                </Button>
+              </div>
+
+              <div className="space-y-3">
+                {transferOrderForm.items.map((item, index) => {
+                  const selectedProduct = productsById.get(item.productId);
+
+                  return (
+                    <div
+                      key={`transfer-item-${index + 1}`}
+                      className="grid gap-3 rounded-lg border border-border/70 bg-muted/20 p-3 sm:grid-cols-[minmax(0,1fr)_140px_140px]"
+                    >
+                      <div className="space-y-2">
+                        <label className="block h-4 text-xs leading-4 font-medium text-muted-foreground">
+                          Sản phẩm {index + 1}
+                        </label>
+                        <Select
+                          value={item.productId || undefined}
+                          onValueChange={(value) =>
+                            handleTransferOrderItemChange(index, "productId", value)
+                          }
+                        >
+                          <SelectTrigger className="h-9 w-full py-0 leading-none">
+                            <SelectValue placeholder="-- Chọn sản phẩm --" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {products.map((product) => (
+                              <SelectItem key={product.id} value={product.id}>
+                                {product.name}
+                                {product.sku ? ` (${product.sku})` : ""} - Tồn: {product.quantity}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {selectedProduct ? (
+                          <p className="text-xs text-muted-foreground">
+                            Tồn khả dụng: {selectedProduct.quantity}
+                          </p>
+                        ) : null}
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="block h-4 text-xs leading-4 font-medium text-muted-foreground">
+                          Số lượng
+                        </label>
+                        <Input
+                          type="number"
+                          min={1}
+                          step={1}
+                          className="h-9 py-0 text-sm leading-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                          placeholder="0"
+                          value={item.quantity}
+                          onChange={(event) =>
+                            handleTransferOrderItemChange(index, "quantity", event.target.value)
+                          }
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="block h-4 text-xs leading-4 font-medium text-muted-foreground">
+                          Thao tác
+                        </label>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-9 w-full cursor-pointer py-0 text-sm leading-none"
+                          disabled={
+                            isSubmittingTransferOrder || transferOrderForm.items.length === 1
+                          }
+                          onClick={() => handleRemoveTransferOrderItem(index)}
+                        >
+                          <Trash2 className="size-3.5" />
+                          Xóa dòng
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <p className="mt-3 text-xs text-muted-foreground">
+                Tổng số lượng chuyển: {transferOrderTotalQuantityPreview}
+              </p>
+            </div>
+
+            {transferOrderError ? (
+              <p className="text-sm text-destructive">{transferOrderError}</p>
+            ) : null}
+
+            <div className="flex flex-col-reverse gap-2 border-t border-border/70 pt-4 sm:flex-row sm:justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                className="cursor-pointer"
+                disabled={isSubmittingTransferOrder}
+                onClick={() => {
+                  setIsTransferOrderDialogOpen(false);
+                  resetTransferOrderForm();
+                }}
+              >
+                Hủy
+              </Button>
+              <Button
+                type="submit"
+                className="cursor-pointer sm:min-w-[170px]"
+                disabled={isSubmittingTransferOrder}
+              >
+                <Plus className="size-4" />
+                {isSubmittingTransferOrder ? "Đang thêm..." : "Thêm đơn chuyển"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={isReturnOrderDialogOpen}
+        onOpenChange={(open) => {
+          if (isSubmittingReturnOrder) {
+            return;
+          }
+
+          setIsReturnOrderDialogOpen(open);
+          if (!open) {
+            resetReturnOrderForm();
+          }
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto p-0 sm:max-w-4xl">
+          <DialogHeader className="space-y-2 border-b border-border/70 px-6 pt-6 pb-4">
+            <DialogTitle className="text-xl">Thêm đơn trả kho</DialogTitle>
+            <DialogDescription>
+              Tạo phiếu nhập kho từ trả hàng hoặc hoàn kho, có thể chọn nhà cung cấp và đơn
+              giá theo từng sản phẩm.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSubmitReturnOrder} className="space-y-5 px-6 py-5">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <label htmlFor="return-supplier" className="text-sm font-medium">
+                  Nhà cung cấp (tùy chọn)
+                </label>
+                <Select
+                  value={returnOrderForm.supplierId || NO_SUPPLIER_VALUE}
+                  onValueChange={(value) =>
+                    handleReturnOrderFieldChange(
+                      "supplierId",
+                      value === NO_SUPPLIER_VALUE ? "" : value
+                    )
+                  }
+                >
+                  <SelectTrigger id="return-supplier" className="w-full">
+                    <SelectValue placeholder="-- Không chọn nhà cung cấp --" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_SUPPLIER_VALUE}>-- Không chọn nhà cung cấp --</SelectItem>
+                    {suppliers.map((supplier) => (
+                      <SelectItem key={supplier.id} value={supplier.id}>
+                        {supplier.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2 sm:col-span-2">
+                <label htmlFor="return-note" className="text-sm font-medium">
+                  Ghi chú
+                </label>
+                <Textarea
+                  id="return-note"
+                  placeholder="Ghi chú thêm (nếu có)"
+                  value={returnOrderForm.note}
+                  onChange={(event) =>
+                    handleReturnOrderFieldChange("note", event.target.value)
+                  }
+                />
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-border/70 bg-background p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <p className="text-sm font-medium">Danh sách sản phẩm nhập</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="cursor-pointer"
+                  disabled={isSubmittingReturnOrder}
+                  onClick={handleAddReturnOrderItem}
+                >
+                  <Plus className="size-3.5" />
+                  Thêm dòng
+                </Button>
+              </div>
+
+              <div className="space-y-3">
+                {returnOrderForm.items.map((item, index) => (
+                  <div
+                    key={`return-item-${index + 1}`}
+                    className="grid gap-3 rounded-lg border border-border/70 bg-muted/20 p-3 lg:grid-cols-[minmax(0,1fr)_110px_150px_140px]"
+                  >
+                    <div className="space-y-2">
+                      <label className="block h-4 text-xs leading-4 font-medium text-muted-foreground">
+                        Sản phẩm {index + 1}
+                      </label>
+                      <Select
+                        value={item.productId || undefined}
+                        onValueChange={(value) =>
+                          handleReturnOrderItemChange(index, "productId", value)
+                        }
+                      >
+                        <SelectTrigger className="h-9 w-full py-0 leading-none">
+                          <SelectValue placeholder="-- Chọn sản phẩm --" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {products.map((product) => (
+                            <SelectItem key={product.id} value={product.id}>
+                              {product.name}
+                              {product.sku ? ` (${product.sku})` : ""} - Tồn: {product.quantity}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="block h-4 text-xs leading-4 font-medium text-muted-foreground">
+                        Số lượng
+                      </label>
+                      <Input
+                        type="number"
+                        min={1}
+                        step={1}
+                        className="h-9 py-0 text-sm leading-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                        placeholder="0"
+                        value={item.quantity}
+                        onChange={(event) =>
+                          handleReturnOrderItemChange(index, "quantity", event.target.value)
+                        }
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="block h-4 text-xs leading-4 font-medium text-muted-foreground">
+                        Đơn giá
+                      </label>
+                      <Input
+                        type="number"
+                        min={0}
+                        step={1000}
+                        className="h-9 py-0 text-sm leading-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                        placeholder="0"
+                        value={item.unitPrice}
+                        onChange={(event) =>
+                          handleReturnOrderItemChange(index, "unitPrice", event.target.value)
+                        }
+                      />
+                    </div>
+
+                      <div className="space-y-2">
+                        <label className="block h-4 text-xs leading-4 font-medium text-muted-foreground">
+                          Thao tác
+                        </label>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-9 w-full cursor-pointer py-0 text-sm leading-none"
+                          disabled={isSubmittingReturnOrder || returnOrderForm.items.length === 1}
+                          onClick={() => handleRemoveReturnOrderItem(index)}
+                        >
+                        <Trash2 className="size-3.5" />
+                        Xóa dòng
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <p className="mt-3 text-xs text-muted-foreground">
+                Tổng tiền tạm tính: {formatCurrency(returnOrderTotalAmountPreview)}
+              </p>
+            </div>
+
+            {returnOrderError ? (
+              <p className="text-sm text-destructive">{returnOrderError}</p>
+            ) : null}
+
+            <div className="flex flex-col-reverse gap-2 border-t border-border/70 pt-4 sm:flex-row sm:justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                className="cursor-pointer"
+                disabled={isSubmittingReturnOrder}
+                onClick={() => {
+                  setIsReturnOrderDialogOpen(false);
+                  resetReturnOrderForm();
+                }}
+              >
+                Hủy
+              </Button>
+              <Button
+                type="submit"
+                className="cursor-pointer sm:min-w-[170px]"
+                disabled={isSubmittingReturnOrder}
+              >
+                <Plus className="size-4" />
+                {isSubmittingReturnOrder ? "Đang thêm..." : "Thêm đơn trả"}
               </Button>
             </div>
           </form>
