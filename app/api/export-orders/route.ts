@@ -14,6 +14,8 @@ type TransferOrderPayload = {
   createdAt: string;
   itemsCount: number;
   totalQuantity: number;
+  targetBranchId?: string;
+  targetBranchName?: string;
 };
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -124,6 +126,8 @@ const mapTransferOrder = (payload: unknown): TransferOrderPayload | null => {
       readDateString(payload.created_at) || readDateString(payload.createdAt),
     itemsCount: items.length,
     totalQuantity,
+    targetBranchId: readString(payload.target_branch_id).trim() || readString(payload.targetBranchId).trim(),
+    targetBranchName: readString(payload.target_branch_name).trim() || readString(payload.targetBranchName).trim(),
   };
 };
 
@@ -198,6 +202,7 @@ type CreateTransferOrderBody = {
   reason: string;
   note: string;
   items: CreateTransferOrderItem[];
+  targetBranchId: string;
 };
 
 const normalizeCreateTransferOrderBody = (body: unknown): CreateTransferOrderBody => {
@@ -215,10 +220,15 @@ const normalizeCreateTransferOrderBody = (body: unknown): CreateTransferOrderBod
     reason: readString(source.reason).trim(),
     note: readString(source.note).trim(),
     items,
+    targetBranchId: readString(source.targetBranchId).trim(),
   };
 };
 
 const validateCreateTransferOrderBody = (payload: CreateTransferOrderBody) => {
+  if (!payload.targetBranchId) {
+    return "Vui lòng chọn chi nhánh đích.";
+  }
+
   if (payload.items.length === 0) {
     return "Vui lòng thêm ít nhất một sản phẩm chuyển kho.";
   }
@@ -302,6 +312,7 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({
         reason: body.reason || null,
         note: body.note || null,
+        target_branch_id: body.targetBranchId,
         items: body.items.map((item) => ({
           product_id: item.productId,
           quantity: item.quantity,

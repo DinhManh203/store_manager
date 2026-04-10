@@ -12,9 +12,10 @@ type ReturnOrderPayload = {
   totalAmount: number;
   note: string;
   createdBy: string;
-  createdAt: string;
   itemsCount: number;
   totalQuantity: number;
+  sourceBranchId?: string;
+  sourceBranchName?: string;
 };
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -126,6 +127,8 @@ const mapReturnOrder = (payload: unknown): ReturnOrderPayload | null => {
       readDateString(payload.created_at) || readDateString(payload.createdAt),
     itemsCount: items.length,
     totalQuantity,
+    sourceBranchId: readString(payload.source_branch_id).trim() || readString(payload.sourceBranchId).trim(),
+    sourceBranchName: readString(payload.source_branch_name).trim() || readString(payload.sourceBranchName).trim(),
   };
 };
 
@@ -199,6 +202,7 @@ type CreateReturnOrderItem = {
 
 type CreateReturnOrderBody = {
   supplierId: string;
+  sourceBranchId: string;
   note: string;
   items: CreateReturnOrderItem[];
 };
@@ -217,12 +221,17 @@ const normalizeCreateReturnOrderBody = (body: unknown): CreateReturnOrderBody =>
 
   return {
     supplierId: readString(source.supplierId).trim(),
+    sourceBranchId: readString(source.sourceBranchId).trim(),
     note: readString(source.note).trim(),
     items,
   };
 };
 
 const validateCreateReturnOrderBody = (payload: CreateReturnOrderBody) => {
+  if (!payload.supplierId && !payload.sourceBranchId) {
+    return "Vui lòng chọn nhà cung cấp hoặc chi nhánh nguồn.";
+  }
+
   if (payload.items.length === 0) {
     return "Vui lòng thêm ít nhất một sản phẩm nhập kho.";
   }
@@ -309,6 +318,7 @@ export async function POST(request: NextRequest) {
       },
       body: JSON.stringify({
         supplier_id: body.supplierId || null,
+        source_branch_id: body.sourceBranchId || null,
         note: body.note || null,
         items: body.items.map((item) => ({
           product_id: item.productId,

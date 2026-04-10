@@ -98,6 +98,7 @@ type TransferOrderItemForm = {
 type TransferOrderForm = {
   reason: string;
   note: string;
+  targetBranchId: string;
   items: TransferOrderItemForm[];
 };
 
@@ -109,6 +110,7 @@ type ReturnOrderItemForm = {
 
 type ReturnOrderForm = {
   supplierId: string;
+  sourceBranchId: string;
   note: string;
   items: ReturnOrderItemForm[];
 };
@@ -127,6 +129,11 @@ type Supplier = {
   name: string;
 };
 
+type Branch = {
+  id: string;
+  name: string;
+};
+
 type TransferOrder = {
   id: string;
   reason: string;
@@ -135,6 +142,7 @@ type TransferOrder = {
   createdAt: string;
   itemsCount: number;
   totalQuantity: number;
+  targetBranchName?: string;
 };
 
 type ReturnOrder = {
@@ -146,6 +154,7 @@ type ReturnOrder = {
   createdAt: string;
   itemsCount: number;
   totalQuantity: number;
+  sourceBranchName?: string;
 };
 
 const emptyForm: ProductForm = {
@@ -161,11 +170,13 @@ const emptyForm: ProductForm = {
 const createEmptyTransferOrderForm = (): TransferOrderForm => ({
   reason: "",
   note: "",
+  targetBranchId: "",
   items: [{ productId: "", quantity: "1" }],
 });
 
 const createEmptyReturnOrderForm = (): ReturnOrderForm => ({
   supplierId: "",
+  sourceBranchId: "",
   note: "",
   items: [{ productId: "", quantity: "1", unitPrice: "0" }],
 });
@@ -306,6 +317,7 @@ const normalizeProductPayload = (payload: unknown): Product | null => {
 export default function StoragePage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [branches, setBranches] = useState<Branch[]>([]);
   const [transferOrders, setTransferOrders] = useState<TransferOrder[]>([]);
   const [returnOrders, setReturnOrders] = useState<ReturnOrder[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -464,6 +476,28 @@ export default function StoragePage() {
     }
   };
 
+  const loadBranchesFromApi = async () => {
+    try {
+      const response = await fetch("/api/branches", {
+        method: "GET",
+        cache: "no-store",
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (response.ok && Array.isArray(payload)) {
+        const nextBranches = payload
+          .filter((item): item is Record<string, unknown> => isObject(item))
+          .map((item) => ({
+            id: readString(item.id).trim(),
+            name: readString(item.name).trim(),
+          }))
+          .filter((item) => Boolean(item.id) && Boolean(item.name));
+        setBranches(nextBranches);
+      }
+    } catch {
+      // Ignore failures
+    }
+  };
+
   const loadTransferOrdersFromApi = async () => {
     setIsLoadingTransferOrders(true);
 
@@ -550,6 +584,7 @@ export default function StoragePage() {
   useEffect(() => {
     void loadProductsFromApi();
     void loadSuppliersFromApi();
+    void loadBranchesFromApi();
     void loadTransferOrdersFromApi();
     void loadReturnOrdersFromApi();
   }, []);
@@ -805,6 +840,10 @@ export default function StoragePage() {
   };
 
   const validateTransferOrderCreateForm = () => {
+    if (!transferOrderForm.targetBranchId) {
+      return "Vui lòng chọn chi nhánh đích.";
+    }
+
     if (transferOrderForm.items.length === 0) {
       return "Vui lòng thêm ít nhất một sản phẩm chuyển kho.";
     }
@@ -855,6 +894,7 @@ export default function StoragePage() {
     const payload = {
       reason: transferOrderForm.reason.trim(),
       note: transferOrderForm.note.trim(),
+      targetBranchId: transferOrderForm.targetBranchId,
       items: transferOrderForm.items.map((item) => ({
         productId: item.productId,
         quantity: Number(item.quantity),
@@ -942,6 +982,10 @@ export default function StoragePage() {
   };
 
   const validateReturnOrderCreateForm = () => {
+    if (!returnOrderForm.supplierId && !returnOrderForm.sourceBranchId) {
+      return "Vui lòng chọn nhà cung cấp hoặc chi nhánh nguồn.";
+    }
+
     if (returnOrderForm.items.length === 0) {
       return "Vui lòng thêm ít nhất một sản phẩm nhập kho.";
     }
@@ -991,6 +1035,7 @@ export default function StoragePage() {
 
     const payload = {
       supplierId: returnOrderForm.supplierId.trim(),
+      sourceBranchId: returnOrderForm.sourceBranchId.trim(),
       note: returnOrderForm.note.trim(),
       items: returnOrderForm.items.map((item) => ({
         productId: item.productId,
@@ -1428,6 +1473,7 @@ export default function StoragePage() {
                     <TableHead className="w-14">STT</TableHead>
                     <TableHead className="min-w-[170px]">Mã đơn</TableHead>
                     <TableHead className="min-w-[180px]">Thời gian</TableHead>
+                    <TableHead>Chi nhánh đích</TableHead>
                     <TableHead>Người tạo</TableHead>
                     <TableHead>Số mặt hàng</TableHead>
                     <TableHead>Tổng SL</TableHead>
@@ -1454,6 +1500,7 @@ export default function StoragePage() {
                         <TableCell className="text-muted-foreground">{index + 1}</TableCell>
                         <TableCell className="font-mono text-xs">{order.id}</TableCell>
                         <TableCell>{formatDateTime(order.createdAt)}</TableCell>
+                        <TableCell>{order.targetBranchName || "—"}</TableCell>
                         <TableCell>{order.createdBy || "Không rõ"}</TableCell>
                         <TableCell>{order.itemsCount}</TableCell>
                         <TableCell>{order.totalQuantity}</TableCell>
@@ -1499,7 +1546,7 @@ export default function StoragePage() {
                     <TableHead className="w-14">STT</TableHead>
                     <TableHead className="min-w-[170px]">Mã đơn</TableHead>
                     <TableHead className="min-w-[180px]">Thời gian</TableHead>
-                    <TableHead>Nhà cung cấp</TableHead>
+                    <TableHead>Nguồn trả (NCC/Chi nhánh)</TableHead>
                     <TableHead>Người tạo</TableHead>
                     <TableHead>Số mặt hàng</TableHead>
                     <TableHead>Tổng SL</TableHead>
@@ -1526,7 +1573,9 @@ export default function StoragePage() {
                         <TableCell className="text-muted-foreground">{index + 1}</TableCell>
                         <TableCell className="font-mono text-xs">{order.id}</TableCell>
                         <TableCell>{formatDateTime(order.createdAt)}</TableCell>
-                        <TableCell>{order.supplierName || "—"}</TableCell>
+                        <TableCell>
+                          {order.sourceBranchName ? `[CN] ${order.sourceBranchName}` : order.supplierName ? `[NCC] ${order.supplierName}` : "—"}
+                        </TableCell>
                         <TableCell>{order.createdBy || "Không rõ"}</TableCell>
                         <TableCell>{order.itemsCount}</TableCell>
                         <TableCell>{order.totalQuantity}</TableCell>
@@ -1848,6 +1897,29 @@ export default function StoragePage() {
           <form onSubmit={handleSubmitTransferOrder} className="space-y-5 px-6 py-5">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
+                <label htmlFor="transfer-target-branch" className="text-sm font-medium text-destructive">
+                  Chi nhánh đích *
+                </label>
+                <Select
+                  value={transferOrderForm.targetBranchId || undefined}
+                  onValueChange={(value) =>
+                    handleTransferOrderFieldChange("targetBranchId", value)
+                  }
+                >
+                  <SelectTrigger id="transfer-target-branch" className="w-full">
+                    <SelectValue placeholder="-- Chọn chi nhánh đích --" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {branches.map((branch) => (
+                      <SelectItem key={branch.id} value={branch.id}>
+                        {branch.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
                 <label htmlFor="transfer-reason" className="text-sm font-medium">
                   Lý do chuyển kho
                 </label>
@@ -2053,6 +2125,33 @@ export default function StoragePage() {
                     {suppliers.map((supplier) => (
                       <SelectItem key={supplier.id} value={supplier.id}>
                         {supplier.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="return-source-branch" className="text-sm font-medium">
+                  Chi nhánh nguồn (tùy chọn)
+                </label>
+                <Select
+                  value={returnOrderForm.sourceBranchId || NO_SUPPLIER_VALUE}
+                  onValueChange={(value) =>
+                    handleReturnOrderFieldChange(
+                      "sourceBranchId",
+                      value === NO_SUPPLIER_VALUE ? "" : value
+                    )
+                  }
+                >
+                  <SelectTrigger id="return-source-branch" className="w-full">
+                    <SelectValue placeholder="-- Không chọn chi nhánh nguồn --" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_SUPPLIER_VALUE}>-- Không chọn chi nhánh nguồn --</SelectItem>
+                    {branches.map((branch) => (
+                      <SelectItem key={branch.id} value={branch.id}>
+                        {branch.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
