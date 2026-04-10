@@ -12,6 +12,7 @@ type ReturnOrderPayload = {
   totalAmount: number;
   note: string;
   createdBy: string;
+  createdAt: string;
   itemsCount: number;
   totalQuantity: number;
   sourceBranchId?: string;
