@@ -10,6 +10,9 @@ export default function proxy(request: NextRequest) {
   const isStaticAsset =
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon.ico") ||
+    pathname.startsWith("/icon") ||
+    pathname.startsWith("/apple-icon") ||
+    pathname.startsWith("/manifest") ||
     pathname.startsWith("/images");
 
   if (isStaticAsset || pathname.startsWith("/api")) {

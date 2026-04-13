@@ -6,6 +6,13 @@ import { Toaster } from "@/components/ui/toast";
 export const metadata: Metadata = {
   title: "Bảng Điều Khiển Quản Trị",
   description: "Bảng điều khiển vận hành dành cho quản trị viên",
+  icons: {
+    icon: [
+      { url: "/favicon.ico", type: "image/x-icon" },
+      { url: "/icon.png", type: "image/png" },
+    ],
+    apple: "/icon.png",
+  },
 };
 
 export default function RootLayout({
