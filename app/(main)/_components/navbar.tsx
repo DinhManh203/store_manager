@@ -10,6 +10,7 @@ import {
   LogOut,
   Moon,
   PackagePlus,
+  RefreshCw,
   ShieldCheck,
   Sun,
   UserCircle2,
@@ -262,6 +263,16 @@ const Navbar = ({
 
   const handleToggleTheme = () => {
     setTheme(isDark ? "light" : "dark");
+  };
+
+  const handleReloadPage = () => {
+    triggerTopHeaderLoading();
+
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("app:main-content-reload"));
+    }
+
+    router.refresh();
   };
 
   const triggerTopHeaderLoading = () => {
@@ -520,6 +531,16 @@ const Navbar = ({
           aria-label="Đổi giao diện sáng/tối"
         >
           {isDark ? <Sun className="size-4" /> : <Moon className="size-4" />}
+        </Button>
+
+        <Button
+          variant="outline"
+          size="icon"
+          className="cursor-pointer"
+          onClick={handleReloadPage}
+          aria-label="Tải lại trang"
+        >
+          <RefreshCw className="size-4" />
         </Button>
 
         {SHOW_NOTIFICATIONS ? (

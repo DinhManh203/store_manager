@@ -14,6 +14,7 @@ const MainLayout = ({ children }: { children: React.ReactNode }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [isTopHeaderLoading, setIsTopHeaderLoading] = useState(false);
+  const [mainContentReloadKey, setMainContentReloadKey] = useState(0);
   const isRedirectingRef = useRef(false);
 
   useEffect(() => {
@@ -112,6 +113,18 @@ const MainLayout = ({ children }: { children: React.ReactNode }) => {
   }, []);
 
   useEffect(() => {
+    const handleMainContentReload = () => {
+      setMainContentReloadKey((prev) => prev + 1);
+    };
+
+    window.addEventListener("app:main-content-reload", handleMainContentReload);
+
+    return () => {
+      window.removeEventListener("app:main-content-reload", handleMainContentReload);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!isTopHeaderLoading) {
       return;
     }
@@ -175,7 +188,7 @@ const MainLayout = ({ children }: { children: React.ReactNode }) => {
           isSidebarOpen={isSidebarOpen}
           onToggleSidebar={toggleSidebar}
         />
-        <main className="px-4 pb-8 pt-20 md:px-6 md:pt-24 lg:px-8">{children}</main>
+        <main key={mainContentReloadKey} className="px-4 pb-8 pt-20 md:px-6 md:pt-24 lg:px-8">{children}</main>
       </div>
     </div>
   );

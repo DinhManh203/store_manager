@@ -10,8 +10,11 @@ import {
   useState,
 } from "react";
 import {
+  Copy,
+  Check,
   ImagePlus,
   Edit2,
+  Loader2,
   Plus,
   Search,
   SlidersHorizontal,
@@ -123,6 +126,7 @@ type HoverPreview = {
 };
 
 type StockFilter = "all" | "stable" | "low" | "out";
+type StorageTab = "inventory" | "categories" | "transfer-orders" | "return-orders";
 
 type Supplier = {
   id: string;
@@ -157,6 +161,20 @@ type ReturnOrder = {
   sourceBranchName?: string;
 };
 
+type CategorySummary = {
+  catalogId?: string;
+  key: string;
+  name: string;
+  productCount: number;
+  totalQuantity: number;
+  totalValue: number;
+};
+
+type CategoryItem = {
+  id: string;
+  name: string;
+};
+
 const emptyForm: ProductForm = {
   name: "",
   imageUrl: "",
@@ -181,6 +199,9 @@ const createEmptyReturnOrderForm = (): ReturnOrderForm => ({
   items: [{ productId: "", quantity: "1", unitPrice: "0" }],
 });
 
+const DEFAULT_CATEGORY_NAME = "Khác";
+const CATEGORY_FALLBACK_STORAGE_KEY = "storage.custom-categories";
+const STORAGE_ACTIVE_TAB_KEY = "storage.active-tab";
 const NO_SUPPLIER_VALUE = "__none__";
 
 const formatCurrency = (value: number) =>
@@ -240,7 +261,7 @@ const getProductInitials = (name: string) => {
   return initials || "SP";
 };
 
-const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
+const MAX_IMAGE_SIZE_BYTES = 15 * 1024 * 1024;
 const HOVER_PREVIEW_WIDTH = 360;
 const HOVER_PREVIEW_HEIGHT = 320;
 const HOVER_PREVIEW_PADDING = 16;
@@ -271,6 +292,36 @@ const normalizeSearchText = (value: string) =>
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .trim();
+
+const normalizeCategoryName = (value: string) => value.trim().replace(/\s+/g, " ");
+
+const getCategoryKey = (value: string) => normalizeSearchText(normalizeCategoryName(value));
+
+const normalizeCategoryList = (values: string[]) => {
+  const categoryMap = new Map<string, string>();
+
+  values.forEach((value) => {
+    const normalized = normalizeCategoryName(value);
+    if (!normalized) {
+      return;
+    }
+
+    const key = getCategoryKey(normalized);
+    if (!categoryMap.has(key)) {
+      categoryMap.set(key, normalized);
+    }
+  });
+
+  return Array.from(categoryMap.values()).sort((left, right) =>
+    left.localeCompare(right, "vi", { sensitivity: "base" })
+  );
+};
+
+const createLocalCategoryItems = (values: string[]): CategoryItem[] =>
+  normalizeCategoryList(values).map((name) => ({
+    id: `local:${getCategoryKey(name)}`,
+    name,
+  }));
 
 const matchStockFilter = (quantity: number, filter: StockFilter) => {
   if (filter === "all") {
@@ -303,7 +354,7 @@ const normalizeProductPayload = (payload: unknown): Product | null => {
     id,
     name,
     sku: readString(payload.sku).trim(),
-    category: readString(payload.category).trim() || "Khác",
+    category: readString(payload.category).trim() || DEFAULT_CATEGORY_NAME,
     quantity: Math.max(0, Math.trunc(readNumber(payload.quantity))),
     price: readNumber(payload.price),
     imageUrl: readString(payload.imageUrl).trim(),
@@ -314,6 +365,20 @@ const normalizeProductPayload = (payload: unknown): Product | null => {
   };
 };
 
+const normalizeCategoryPayload = (payload: unknown): CategoryItem | null => {
+  if (!isObject(payload)) {
+    return null;
+  }
+
+  const id = readString(payload.id).trim();
+  const name = normalizeCategoryName(readString(payload.name));
+  if (!id || !name) {
+    return null;
+  }
+
+  return { id, name };
+};
+
 export default function StoragePage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -321,6 +386,7 @@ export default function StoragePage() {
   const [transferOrders, setTransferOrders] = useState<TransferOrder[]>([]);
   const [returnOrders, setReturnOrders] = useState<ReturnOrder[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [activeTab, setActiveTab] = useState<StorageTab>("inventory");
   const [stockFilter, setStockFilter] = useState<StockFilter>("all");
   const [form, setForm] = useState<ProductForm>(emptyForm);
   const [transferOrderForm, setTransferOrderForm] = useState<TransferOrderForm>(
@@ -350,6 +416,13 @@ export default function StoragePage() {
   const [error, setError] = useState("");
   const [transferOrderError, setTransferOrderError] = useState("");
   const [returnOrderError, setReturnOrderError] = useState("");
+  const [categoryCatalog, setCategoryCatalog] = useState<CategoryItem[]>([]);
+  const [isCategoryApiUnavailable, setIsCategoryApiUnavailable] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [editingCategoryKey, setEditingCategoryKey] = useState<string | null>(null);
+  const [editingCategoryValue, setEditingCategoryValue] = useState("");
+  const [categoryError, setCategoryError] = useState("");
+  const [isSubmittingCategory, setIsSubmittingCategory] = useState(false);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
 
   const totalQuantity = useMemo(
@@ -387,6 +460,74 @@ export default function StoragePage() {
   const productsById = useMemo(
     () => new Map(products.map((product) => [product.id, product])),
     [products]
+  );
+
+  const categorySummaries = useMemo(() => {
+    const categoryMap = new Map<string, CategorySummary>();
+
+    products.forEach((product) => {
+      const categoryName = normalizeCategoryName(product.category) || DEFAULT_CATEGORY_NAME;
+      const key = getCategoryKey(categoryName);
+      const current = categoryMap.get(key);
+
+      if (!current) {
+        categoryMap.set(key, {
+          key,
+          name: categoryName,
+          productCount: 1,
+          totalQuantity: product.quantity,
+          totalValue: product.quantity * product.price,
+        });
+        return;
+      }
+
+      current.productCount += 1;
+      current.totalQuantity += product.quantity;
+      current.totalValue += product.quantity * product.price;
+    });
+
+    categoryCatalog.forEach((category) => {
+      const normalized = normalizeCategoryName(category.name);
+      if (!normalized) {
+        return;
+      }
+
+      const key = getCategoryKey(normalized);
+      const current = categoryMap.get(key);
+      if (current) {
+        current.catalogId = category.id;
+        current.name = category.name;
+        return;
+      }
+
+      categoryMap.set(key, {
+        catalogId: category.id,
+        key,
+        name: normalized,
+        productCount: 0,
+        totalQuantity: 0,
+        totalValue: 0,
+      });
+    });
+
+    return Array.from(categoryMap.values()).sort((left, right) =>
+      left.name.localeCompare(right.name, "vi", { sensitivity: "base" })
+    );
+  }, [categoryCatalog, products]);
+
+  const categoryInUseCount = useMemo(
+    () => categorySummaries.filter((category) => category.productCount > 0).length,
+    [categorySummaries]
+  );
+
+  const emptyCategoryCount = useMemo(
+    () => categorySummaries.filter((category) => category.productCount === 0).length,
+    [categorySummaries]
+  );
+
+  const categoryOptions = useMemo(
+    () => normalizeCategoryList(categorySummaries.map((category) => category.name)),
+    [categorySummaries]
   );
 
   const transferOrderTotalQuantityPreview = useMemo(
@@ -498,6 +639,85 @@ export default function StoragePage() {
     }
   };
 
+  const loadCategoriesFromApi = async () => {
+    const loadLocalFallback = () => {
+      if (typeof window === "undefined") {
+        return [] as CategoryItem[];
+      }
+
+      try {
+        const raw = window.localStorage.getItem(CATEGORY_FALLBACK_STORAGE_KEY);
+        if (!raw) {
+          return [] as CategoryItem[];
+        }
+
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) {
+          return [] as CategoryItem[];
+        }
+
+        return createLocalCategoryItems(parsed.map((item) => readString(item)));
+      } catch {
+        return [] as CategoryItem[];
+      }
+    };
+
+    try {
+      const response = await fetch("/api/categories", {
+        method: "GET",
+        cache: "no-store",
+      });
+      const payload = await response.json().catch(() => ({}));
+
+      if (
+        response.ok &&
+        isObject(payload) &&
+        payload.unavailable === true
+      ) {
+        const fallbackCategories = loadLocalFallback();
+        setCategoryCatalog(fallbackCategories);
+        setIsCategoryApiUnavailable(true);
+        setCategoryError("");
+        return;
+      }
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          const fallbackCategories = loadLocalFallback();
+          setCategoryCatalog(fallbackCategories);
+          setIsCategoryApiUnavailable(true);
+          setCategoryError("");
+          return;
+        }
+
+        const message =
+          extractErrorMessage(payload) || "Không thể tải danh sách danh mục từ API.";
+        setCategoryError(message);
+        return;
+      }
+
+      const nextCategories = Array.isArray(payload)
+        ? payload
+            .map((item) => normalizeCategoryPayload(item))
+            .filter((item): item is CategoryItem => item !== null)
+        : [];
+
+      setIsCategoryApiUnavailable(false);
+      setCategoryCatalog(nextCategories);
+      setCategoryError("");
+    } catch {
+      const fallbackCategories = loadLocalFallback();
+      if (fallbackCategories.length > 0) {
+        setCategoryCatalog(fallbackCategories);
+        setIsCategoryApiUnavailable(true);
+        setCategoryError("");
+        return;
+      }
+
+      setCategoryError("Không thể kết nối API danh mục.");
+    }
+  };
+
   const loadTransferOrdersFromApi = async () => {
     setIsLoadingTransferOrders(true);
 
@@ -585,9 +805,52 @@ export default function StoragePage() {
     void loadProductsFromApi();
     void loadSuppliersFromApi();
     void loadBranchesFromApi();
+    void loadCategoriesFromApi();
     void loadTransferOrdersFromApi();
     void loadReturnOrdersFromApi();
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const storedTab = window.localStorage.getItem(STORAGE_ACTIVE_TAB_KEY);
+    if (
+      storedTab === "inventory" ||
+      storedTab === "categories" ||
+      storedTab === "transfer-orders" ||
+      storedTab === "return-orders"
+    ) {
+      setActiveTab(storedTab);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(STORAGE_ACTIVE_TAB_KEY, activeTab);
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (!isCategoryApiUnavailable || typeof window === "undefined") {
+      return;
+    }
+
+    try {
+      const categoryNames = normalizeCategoryList(
+        categoryCatalog.map((category) => category.name)
+      );
+      window.localStorage.setItem(
+        CATEGORY_FALLBACK_STORAGE_KEY,
+        JSON.stringify(categoryNames)
+      );
+    } catch {
+      // Ignore localStorage write errors
+    }
+  }, [categoryCatalog, isCategoryApiUnavailable]);
 
   const handleChange = (field: keyof ProductForm, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -626,7 +889,7 @@ export default function StoragePage() {
     }
 
     if (file.size > MAX_IMAGE_SIZE_BYTES) {
-      setError("Kích thước ảnh tối đa là 5MB.");
+      setError("Kích thước ảnh tối đa là 15MB.");
       event.target.value = "";
       return;
     }
@@ -697,11 +960,16 @@ export default function StoragePage() {
   const validateForm = () => {
     const name = form.name.trim();
     const sku = form.sku.trim();
+    const category = form.category.trim();
     const quantity = Number(form.quantity);
     const price = Number(form.price);
 
-    if (!name || !sku || !form.quantity || !form.price || !form.supplierId) {
-      return "Vui lòng nhập đầy đủ thông tin (bắt buộc chọn nhà cung cấp).";
+    if (categoryOptions.length === 0) {
+      return "Chưa có danh mục nào. Vui lòng tạo danh mục trước khi thêm sản phẩm.";
+    }
+
+    if (!name || !sku || !category || !form.quantity || !form.price || !form.supplierId) {
+      return "Vui lòng nhập đầy đủ thông tin (bắt buộc chọn danh mục và nhà cung cấp).";
     }
 
     if (Number.isNaN(quantity) || quantity < 0 || !Number.isInteger(quantity)) {
@@ -732,6 +1000,7 @@ export default function StoragePage() {
     const validationError = validateForm();
     if (validationError) {
       setError(validationError);
+      toast.error(validationError);
       return;
     }
 
@@ -739,7 +1008,7 @@ export default function StoragePage() {
       name: form.name.trim(),
       imageUrl: form.imageUrl.trim(),
       sku: form.sku.trim().toUpperCase(),
-      category: form.category.trim() || "Khác",
+      category: form.category.trim(),
       quantity: Number(form.quantity),
       price: Number(form.price),
       supplierId: form.supplierId,
@@ -748,6 +1017,9 @@ export default function StoragePage() {
 
     setError("");
     setIsSubmittingProduct(true);
+    const loadingToastId = toast.loading(
+      editingId ? "Đang lưu sản phẩm..." : "Đang thêm sản phẩm..."
+    );
 
     try {
       const response = await fetch("/api/products", {
@@ -766,6 +1038,7 @@ export default function StoragePage() {
             ? "Không thể cập nhật sản phẩm qua API."
             : "Không thể thêm sản phẩm qua API.");
         setError(message);
+        toast.error(message, { id: loadingToastId });
         return;
       }
 
@@ -788,12 +1061,22 @@ export default function StoragePage() {
       }
       resetForm();
       setIsProductDialogOpen(false);
+      toast.success(
+        editingId
+          ? `Đã lưu thay đổi sản phẩm "${payload.name}".`
+          : `Đã thêm sản phẩm "${payload.name}".`,
+        { id: loadingToastId }
+      );
     } catch {
+      const message = editingId
+        ? "Không thể kết nối API cập nhật sản phẩm."
+        : "Không thể kết nối API thêm sản phẩm.";
       setError(
         editingId
           ? "Không thể kết nối API cập nhật sản phẩm."
           : "Không thể kết nối API thêm sản phẩm."
       );
+      toast.error(message, { id: loadingToastId });
     } finally {
       setIsSubmittingProduct(false);
     }
@@ -1176,6 +1459,382 @@ export default function StoragePage() {
     }
   };
 
+  const getProductsByCategoryKey = (categoryKey: string) =>
+    products.filter((product) => {
+      const normalizedCategory = normalizeCategoryName(product.category) || DEFAULT_CATEGORY_NAME;
+      return getCategoryKey(normalizedCategory) === categoryKey;
+    });
+
+  const updateSingleProductCategory = async (product: Product, category: string) => {
+    const response = await fetch("/api/products", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        id: product.id,
+        name: product.name,
+        imageUrl: product.imageUrl,
+        sku: product.sku,
+        category,
+        quantity: product.quantity,
+        price: product.price,
+        supplierId: product.supplierId || "",
+        supplierName: product.supplierName || "",
+      }),
+    });
+
+    const responsePayload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(
+        extractErrorMessage(responsePayload) ||
+          `Không thể cập nhật danh mục cho sản phẩm "${product.name}".`
+      );
+    }
+
+    return normalizeProductPayload(responsePayload) ?? { ...product, category };
+  };
+
+  const createCategory = async (name: string) => {
+    if (isCategoryApiUnavailable) {
+      return {
+        id: `local:${getCategoryKey(name)}`,
+        name,
+      };
+    }
+
+    const response = await fetch("/api/categories", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ name }),
+    });
+    const responsePayload = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(
+        extractErrorMessage(responsePayload) || "Không thể thêm danh mục qua API."
+      );
+    }
+
+    return normalizeCategoryPayload(responsePayload) ?? {
+      id: `${Date.now()}`,
+      name,
+    };
+  };
+
+  const updateCategory = async (id: string, name: string) => {
+    if (isCategoryApiUnavailable) {
+      return { id, name };
+    }
+
+    const response = await fetch("/api/categories", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ id, name }),
+    });
+    const responsePayload = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(
+        extractErrorMessage(responsePayload) || "Không thể cập nhật danh mục qua API."
+      );
+    }
+
+    return normalizeCategoryPayload(responsePayload) ?? { id, name };
+  };
+
+  const deleteCategory = async (id: string) => {
+    if (isCategoryApiUnavailable) {
+      return;
+    }
+
+    const response = await fetch(`/api/categories?id=${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+    const responsePayload = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(
+        extractErrorMessage(responsePayload) || "Không thể xóa danh mục qua API."
+      );
+    }
+  };
+
+  const handleAddCategory = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (isSubmittingCategory) {
+      return;
+    }
+
+    const normalized = normalizeCategoryName(newCategoryName);
+    if (!normalized) {
+      setCategoryError("Vui lòng nhập tên danh mục.");
+      return;
+    }
+
+    const categoryKey = getCategoryKey(normalized);
+    const existed = categorySummaries.some((category) => category.key === categoryKey);
+    if (existed) {
+      setCategoryError("Danh mục đã tồn tại.");
+      return;
+    }
+
+    setIsSubmittingCategory(true);
+    setCategoryError("");
+    const loadingToastId = toast.loading("Đang thêm danh mục...");
+
+    try {
+      const createdCategory = await createCategory(normalized);
+      setCategoryCatalog((prev) => {
+        const nextByKey = new Map(
+          prev.map((item) => [getCategoryKey(item.name), item] as const)
+        );
+        nextByKey.set(getCategoryKey(createdCategory.name), createdCategory);
+        return Array.from(nextByKey.values()).sort((left, right) =>
+          left.name.localeCompare(right.name, "vi", { sensitivity: "base" })
+        );
+      });
+      setNewCategoryName("");
+      toast.success(`Đã thêm danh mục "${createdCategory.name}".`, {
+        id: loadingToastId,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Không thể thêm danh mục sản phẩm.";
+      setCategoryError(message);
+      toast.error(message, { id: loadingToastId });
+    } finally {
+      setIsSubmittingCategory(false);
+    }
+  };
+
+  const handleStartCategoryEdit = (category: CategorySummary) => {
+    if (isSubmittingCategory) {
+      return;
+    }
+
+    if (category.key === getCategoryKey(DEFAULT_CATEGORY_NAME)) {
+      const message = `Không thể đổi tên danh mục "${DEFAULT_CATEGORY_NAME}".`;
+      setCategoryError(message);
+      toast.error(message);
+      return;
+    }
+
+    setEditingCategoryKey(category.key);
+    setEditingCategoryValue(category.name);
+    setCategoryError("");
+  };
+
+  const handleCancelCategoryEdit = () => {
+    setEditingCategoryKey(null);
+    setEditingCategoryValue("");
+    setCategoryError("");
+  };
+
+  const handleSaveCategoryEdit = async (category: CategorySummary) => {
+    if (isSubmittingCategory) {
+      return;
+    }
+
+    const nextName = normalizeCategoryName(editingCategoryValue);
+    if (!nextName) {
+      setCategoryError("Vui lòng nhập tên danh mục.");
+      return;
+    }
+
+    const nextKey = getCategoryKey(nextName);
+    if (
+      nextKey !== category.key &&
+      categorySummaries.some((item) => item.key === nextKey)
+    ) {
+      setCategoryError("Tên danh mục đã tồn tại.");
+      return;
+    }
+
+    const affectedProducts = getProductsByCategoryKey(category.key);
+    const loadingToastId = toast.loading("Đang cập nhật danh mục...");
+    setIsSubmittingCategory(true);
+    setCategoryError("");
+
+    try {
+      if (affectedProducts.length > 0) {
+        const updateResults = await Promise.allSettled(
+          affectedProducts.map((product) => updateSingleProductCategory(product, nextName))
+        );
+
+        const fulfilledResults = updateResults.filter(
+          (result): result is PromiseFulfilledResult<Product> => result.status === "fulfilled"
+        );
+        const rejectedResults = updateResults.filter(
+          (result): result is PromiseRejectedResult => result.status === "rejected"
+        );
+
+        if (fulfilledResults.length > 0) {
+          const nextProductsById = new Map(
+            fulfilledResults.map((result) => [result.value.id, result.value])
+          );
+          setProducts((prev) =>
+            prev.map((product) => nextProductsById.get(product.id) ?? product)
+          );
+        }
+
+        if (rejectedResults.length > 0) {
+          const firstError = rejectedResults[0]?.reason;
+          const message =
+            firstError instanceof Error
+              ? firstError.message
+              : "Không thể cập nhật danh mục cho một số sản phẩm.";
+          setCategoryError(message);
+          toast.error(message, { id: loadingToastId });
+          return;
+        }
+      }
+
+      const persistedCategory = category.catalogId
+        ? await updateCategory(category.catalogId, nextName)
+        : await createCategory(nextName);
+
+      setCategoryCatalog((prev) => {
+        const nextByKey = new Map(
+          prev.map((item) => [getCategoryKey(item.name), item] as const)
+        );
+        nextByKey.delete(category.key);
+        nextByKey.set(getCategoryKey(persistedCategory.name), persistedCategory);
+        return Array.from(nextByKey.values()).sort((left, right) =>
+          left.name.localeCompare(right.name, "vi", { sensitivity: "base" })
+        );
+      });
+      setEditingCategoryKey(null);
+      setEditingCategoryValue("");
+      toast.success(`Đã đổi danh mục "${category.name}" thành "${nextName}".`, {
+        id: loadingToastId,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Không thể cập nhật danh mục sản phẩm.";
+      setCategoryError(message);
+      toast.error(message, { id: loadingToastId });
+    } finally {
+      setIsSubmittingCategory(false);
+    }
+  };
+
+  const handleDeleteCategory = async (category: CategorySummary) => {
+    if (isSubmittingCategory) {
+      return;
+    }
+
+    const affectedProducts = getProductsByCategoryKey(category.key);
+    if (
+      category.key === getCategoryKey(DEFAULT_CATEGORY_NAME) &&
+      affectedProducts.length > 0
+    ) {
+      const message = `Không thể xóa danh mục "${DEFAULT_CATEGORY_NAME}" vì vẫn còn sản phẩm đang sử dụng.`;
+      setCategoryError(message);
+      toast.error(message);
+      return;
+    }
+
+    const confirmMessage =
+      affectedProducts.length > 0
+        ? `Xóa danh mục "${category.name}" và chuyển ${affectedProducts.length} sản phẩm về "${DEFAULT_CATEGORY_NAME}"?`
+        : `Xóa danh mục "${category.name}"?`;
+
+    if (typeof window !== "undefined" && !window.confirm(confirmMessage)) {
+      return;
+    }
+
+    const loadingToastId = toast.loading("Đang xóa danh mục...");
+    setIsSubmittingCategory(true);
+    setCategoryError("");
+
+    try {
+      if (affectedProducts.length > 0) {
+        const updateResults = await Promise.allSettled(
+          affectedProducts.map((product) =>
+            updateSingleProductCategory(product, DEFAULT_CATEGORY_NAME)
+          )
+        );
+
+        const fulfilledResults = updateResults.filter(
+          (result): result is PromiseFulfilledResult<Product> => result.status === "fulfilled"
+        );
+        const rejectedResults = updateResults.filter(
+          (result): result is PromiseRejectedResult => result.status === "rejected"
+        );
+
+        if (fulfilledResults.length > 0) {
+          const nextProductsById = new Map(
+            fulfilledResults.map((result) => [result.value.id, result.value])
+          );
+          setProducts((prev) =>
+            prev.map((product) => nextProductsById.get(product.id) ?? product)
+          );
+        }
+
+        if (rejectedResults.length > 0) {
+          const firstError = rejectedResults[0]?.reason;
+          const message =
+            firstError instanceof Error
+              ? firstError.message
+              : "Không thể chuyển danh mục cho một số sản phẩm.";
+          setCategoryError(message);
+          toast.error(message, { id: loadingToastId });
+          return;
+        }
+      }
+
+      if (category.catalogId) {
+        await deleteCategory(category.catalogId);
+      }
+
+      setCategoryCatalog((prev) =>
+        prev.filter(
+          (item) =>
+            item.id !== category.catalogId &&
+            getCategoryKey(item.name) !== category.key
+        )
+      );
+
+      if (editingCategoryKey === category.key) {
+        setEditingCategoryKey(null);
+        setEditingCategoryValue("");
+      }
+
+      toast.success(
+        affectedProducts.length > 0
+          ? `Đã xóa danh mục "${category.name}" và chuyển sản phẩm về "${DEFAULT_CATEGORY_NAME}".`
+          : `Đã xóa danh mục "${category.name}".`,
+        { id: loadingToastId }
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Không thể xóa danh mục sản phẩm.";
+      setCategoryError(message);
+      toast.error(message, { id: loadingToastId });
+    } finally {
+      setIsSubmittingCategory(false);
+    }
+  };
+
+  const handleCopyOrderId = async (orderId: string, orderTypeLabel: string) => {
+    if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
+      toast.error("Trình duyệt không hỗ trợ sao chép tự động.");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(orderId);
+      toast.success(`Đã sao chép mã ${orderTypeLabel}: ${orderId}`);
+    } catch {
+      toast.error(`Không thể sao chép mã ${orderTypeLabel}.`);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <section>
@@ -1184,15 +1843,31 @@ export default function StoragePage() {
         <p className="text-sm text-muted-foreground">
           Theo dõi sản phẩm và cập nhật nhanh thông tin tồn kho.
         </p>
+        {isCategoryApiUnavailable ? (
+          <p className="mt-2 text-xs text-amber-600">
+            API danh mục trên backend chưa sẵn sàng. Hệ thống đang dùng chế độ lưu danh mục cục bộ
+            trên trình duyệt.
+          </p>
+        ) : null}
       </section>
 
-      <Tabs defaultValue="inventory" className="w-full flex-col gap-4">
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) => setActiveTab(value as StorageTab)}
+        className="w-full flex-col gap-4"
+      >
         <TabsList className="h-auto w-fit max-w-full justify-start gap-1 overflow-x-auto rounded-xl bg-muted/70 p-1">
           <TabsTrigger
             value="inventory"
             className="h-9 flex-none cursor-pointer px-4 text-sm text-muted-foreground transition-colors data-[state=active]:bg-background data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-sm data-active:bg-background data-active:font-semibold data-active:text-foreground data-active:shadow-sm"
           >
             Tồn kho
+          </TabsTrigger>
+          <TabsTrigger
+            value="categories"
+            className="h-9 flex-none cursor-pointer px-4 text-sm text-muted-foreground transition-colors data-[state=active]:bg-background data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-sm data-active:bg-background data-active:font-semibold data-active:text-foreground data-active:shadow-sm"
+          >
+            Danh mục
           </TabsTrigger>
           <TabsTrigger
             value="transfer-orders"
@@ -1313,7 +1988,8 @@ export default function StoragePage() {
                     <TableHead>Nhà cung cấp</TableHead>
                     <TableHead>Danh mục</TableHead>
                     <TableHead>Số lượng</TableHead>
-                    <TableHead>Giá</TableHead>
+                    <TableHead>Giá/SP</TableHead>
+                    <TableHead>Tổng giá trị tồn</TableHead>
                     <TableHead className="min-w-[180px]">Thời gian tạo</TableHead>
                     <TableHead>Trạng thái</TableHead>
                     <TableHead className="text-right">Thao tác</TableHead>
@@ -1322,19 +1998,19 @@ export default function StoragePage() {
                 <TableBody>
                   {isLoadingProducts ? (
                     <TableRow>
-                      <TableCell colSpan={11} className="py-6 text-center text-muted-foreground">
+                      <TableCell colSpan={12} className="py-6 text-center text-muted-foreground">
                         Đang tải danh sách sản phẩm...
                       </TableCell>
                     </TableRow>
                   ) : products.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={11} className="py-6 text-center text-muted-foreground">
+                      <TableCell colSpan={12} className="py-6 text-center text-muted-foreground">
                         Chưa có sản phẩm nào trong kho.
                       </TableCell>
                     </TableRow>
                   ) : filteredProducts.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={11} className="py-6 text-center text-muted-foreground">
+                      <TableCell colSpan={12} className="py-6 text-center text-muted-foreground">
                         Không tìm thấy sản phẩm phù hợp với từ khóa: {searchQuery}.
                       </TableCell>
                     </TableRow>
@@ -1374,6 +2050,7 @@ export default function StoragePage() {
                           <TableCell>{product.category}</TableCell>
                           <TableCell>{product.quantity}</TableCell>
                           <TableCell>{formatCurrency(product.price)}</TableCell>
+                          <TableCell>{formatCurrency(product.quantity * product.price)}</TableCell>
                           <TableCell>{formatDateTime(product.createdAt)}</TableCell>
                           <TableCell>
                             <Badge variant={stock.variant}>{stock.label}</Badge>
@@ -1446,6 +2123,198 @@ export default function StoragePage() {
           ) : null}
         </TabsContent>
 
+        <TabsContent value="categories" className="mt-0 space-y-6">
+          <section className="grid gap-4 md:grid-cols-3">
+            <Card className="border border-border/70">
+              <CardHeader>
+                <CardDescription>Tổng danh mục</CardDescription>
+                <CardTitle>{categorySummaries.length}</CardTitle>
+              </CardHeader>
+            </Card>
+            <Card className="border border-border/70">
+              <CardHeader>
+                <CardDescription>Danh mục đang dùng</CardDescription>
+                <CardTitle>{categoryInUseCount}</CardTitle>
+              </CardHeader>
+            </Card>
+            <Card className="border border-border/70">
+              <CardHeader>
+                <CardDescription>Danh mục trống</CardDescription>
+                <CardTitle>{emptyCategoryCount}</CardTitle>
+              </CardHeader>
+            </Card>
+          </section>
+
+          <Card className="border border-border/70">
+            <CardHeader className="border-b border-border/70">
+              <CardTitle>Quản lý danh mục</CardTitle>
+              <CardDescription>
+                Thêm mới, đổi tên hoặc xóa danh mục sản phẩm trực tiếp trên hệ thống.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4 pt-4">
+              <form
+                onSubmit={handleAddCategory}
+                className="flex flex-col gap-2 sm:flex-row sm:items-center"
+              >
+                <Input
+                  value={newCategoryName}
+                  onChange={(event) => {
+                    setNewCategoryName(event.target.value);
+                    if (categoryError) {
+                      setCategoryError("");
+                    }
+                  }}
+                  placeholder="Nhập tên danh mục mới"
+                  className="sm:max-w-sm"
+                  disabled={isSubmittingCategory}
+                />
+                <Button
+                  type="submit"
+                  className="cursor-pointer sm:min-w-[140px]"
+                  disabled={isSubmittingCategory || !newCategoryName.trim()}
+                >
+                  {isSubmittingCategory ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Plus className="size-4" />
+                  )}
+                  Thêm danh mục
+                </Button>
+              </form>
+
+              {categoryError ? (
+                <p className="text-sm text-destructive">{categoryError}</p>
+              ) : null}
+
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-14">STT</TableHead>
+                    <TableHead>Tên danh mục</TableHead>
+                    <TableHead className="text-right">Số sản phẩm</TableHead>
+                    <TableHead className="text-right">Tổng tồn</TableHead>
+                    <TableHead className="text-right">Giá trị tồn</TableHead>
+                    <TableHead className="text-right">Trạng thái</TableHead>
+                    <TableHead className="text-right">Thao tác</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {categorySummaries.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="py-6 text-center text-muted-foreground">
+                        Chưa có danh mục nào.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    categorySummaries.map((category, index) => {
+                      const isEditingCategory = editingCategoryKey === category.key;
+                      const isDefaultCategory = category.key === getCategoryKey(DEFAULT_CATEGORY_NAME);
+
+                      return (
+                        <TableRow key={category.key}>
+                          <TableCell className="text-muted-foreground">{index + 1}</TableCell>
+                          <TableCell>
+                            {isEditingCategory ? (
+                              <Input
+                                value={editingCategoryValue}
+                                onChange={(event) => setEditingCategoryValue(event.target.value)}
+                                disabled={isSubmittingCategory}
+                                className="max-w-sm"
+                              />
+                            ) : (
+                              <span className="font-medium">{category.name}</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">{category.productCount}</TableCell>
+                          <TableCell className="text-right">{category.totalQuantity}</TableCell>
+                          <TableCell className="text-right">
+                            {formatCurrency(category.totalValue)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Badge variant={category.productCount > 0 ? "secondary" : "outline"}>
+                              {category.productCount > 0 ? "Đang sử dụng" : "Chưa sử dụng"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right space-x-2">
+                            {isEditingCategory ? (
+                              <div className="flex justify-end gap-1">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="cursor-pointer text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-emerald-600"
+                                  disabled={isSubmittingCategory || !editingCategoryValue.trim()}
+                                  onClick={() => void handleSaveCategoryEdit(category)}
+                                  aria-label="Lưu danh mục"
+                                  title="Lưu danh mục"
+                                >
+                                  {isSubmittingCategory ? (
+                                    <Loader2 className="size-4 animate-spin" />
+                                  ) : (
+                                    <Check className="size-4" />
+                                  )}
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="cursor-pointer"
+                                  disabled={isSubmittingCategory}
+                                  onClick={handleCancelCategoryEdit}
+                                  aria-label="Hủy sửa danh mục"
+                                  title="Hủy sửa danh mục"
+                                >
+                                  <X className="size-4" />
+                                </Button>
+                              </div>
+                            ) : (
+                              <div className="flex justify-end gap-1">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="cursor-pointer"
+                                  disabled={isSubmittingCategory}
+                                  onClick={() => handleStartCategoryEdit(category)}
+                                  aria-label="Sửa danh mục"
+                                  title={
+                                    isDefaultCategory
+                                      ? `Không thể đổi tên danh mục "${DEFAULT_CATEGORY_NAME}".`
+                                      : "Sửa danh mục"
+                                  }
+                                >
+                                  <Edit2 className="size-4" />
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="cursor-pointer text-red-500 hover:text-red-600 hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-red-500"
+                                  disabled={isSubmittingCategory}
+                                  onClick={() => void handleDeleteCategory(category)}
+                                  aria-label="Xóa danh mục"
+                                  title={
+                                    isDefaultCategory && category.productCount > 0
+                                      ? `Không thể xóa danh mục "${DEFAULT_CATEGORY_NAME}" vì vẫn còn sản phẩm đang sử dụng.`
+                                      : "Xóa danh mục"
+                                  }
+                                >
+                                  <Trash2 className="size-4" />
+                                </Button>
+                              </div>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="transfer-orders" className="mt-0">
           <Card className="border border-border/70">
             <CardHeader className="border-b border-border/70">
@@ -1479,18 +2348,19 @@ export default function StoragePage() {
                     <TableHead>Tổng SL</TableHead>
                     <TableHead>Lý do</TableHead>
                     <TableHead>Ghi chú</TableHead>
+                    <TableHead className="text-right">Thao tác</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {isLoadingTransferOrders ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="py-6 text-center text-muted-foreground">
+                      <TableCell colSpan={10} className="py-6 text-center text-muted-foreground">
                         Đang tải đơn chuyển...
                       </TableCell>
                     </TableRow>
                   ) : transferOrders.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="py-6 text-center text-muted-foreground">
+                      <TableCell colSpan={10} className="py-6 text-center text-muted-foreground">
                         Chưa có đơn chuyển nào.
                       </TableCell>
                     </TableRow>
@@ -1506,6 +2376,19 @@ export default function StoragePage() {
                         <TableCell>{order.totalQuantity}</TableCell>
                         <TableCell>{order.reason || "—"}</TableCell>
                         <TableCell>{order.note || "—"}</TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="cursor-pointer"
+                            onClick={() => void handleCopyOrderId(order.id, "đơn chuyển")}
+                            aria-label="Sao chép mã đơn chuyển"
+                            title="Sao chép mã đơn chuyển"
+                          >
+                            <Copy className="size-4" />
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     ))
                   )}
@@ -1552,18 +2435,19 @@ export default function StoragePage() {
                     <TableHead>Tổng SL</TableHead>
                     <TableHead>Tổng tiền</TableHead>
                     <TableHead>Ghi chú</TableHead>
+                    <TableHead className="text-right">Thao tác</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {isLoadingReturnOrders ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="py-6 text-center text-muted-foreground">
+                      <TableCell colSpan={10} className="py-6 text-center text-muted-foreground">
                         Đang tải đơn trả...
                       </TableCell>
                     </TableRow>
                   ) : returnOrders.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="py-6 text-center text-muted-foreground">
+                      <TableCell colSpan={10} className="py-6 text-center text-muted-foreground">
                         Chưa có đơn trả nào.
                       </TableCell>
                     </TableRow>
@@ -1581,6 +2465,19 @@ export default function StoragePage() {
                         <TableCell>{order.totalQuantity}</TableCell>
                         <TableCell>{formatCurrency(order.totalAmount)}</TableCell>
                         <TableCell>{order.note || "—"}</TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="cursor-pointer"
+                            onClick={() => void handleCopyOrderId(order.id, "đơn trả")}
+                            aria-label="Sao chép mã đơn trả"
+                            title="Sao chép mã đơn trả"
+                          >
+                            <Copy className="size-4" />
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     ))
                   )}
@@ -1738,7 +2635,7 @@ export default function StoragePage() {
                   <p className="mt-3 text-xs text-muted-foreground">
                     {imageFileName
                       ? `Đã chọn: ${imageFileName}. Bấm nút thùng rác trên ảnh để xóa.`
-                      : "Hỗ trợ JPG, PNG, WEBP (tối đa 5MB)."}
+                      : "Hỗ trợ JPG, PNG, WEBP (tối đa 15MB)."}
                   </p>
                 </div>
               </div>
@@ -1773,12 +2670,32 @@ export default function StoragePage() {
                     <label htmlFor="product-category" className="text-sm font-medium">
                       Danh mục
                     </label>
-                    <Input
-                      id="product-category"
-                      placeholder="VD: Phụ kiện"
-                      value={form.category}
-                      onChange={(event) => handleChange("category", event.target.value)}
-                    />
+                    <Select
+                      value={form.category || undefined}
+                      onValueChange={(value) => handleChange("category", value)}
+                      disabled={categoryOptions.length === 0}
+                    >
+                      <SelectTrigger id="product-category" className="w-full">
+                        <SelectValue placeholder="-- Chọn danh mục --" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {categoryOptions.map((categoryName) => (
+                          <SelectItem key={categoryName} value={categoryName}>
+                            {categoryName}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {categoryOptions.length === 0 ? (
+                      <p className="text-xs text-amber-600">
+                        Chưa có danh mục nào. Vui lòng vào tab Danh mục để tạo trước khi thêm sản
+                        phẩm.
+                      </p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        Muốn thêm mới hoặc đổi tên danh mục? Vào tab Danh mục để quản lý.
+                      </p>
+                    )}
                   </div>
 
                   <div className="space-y-2">
@@ -1825,7 +2742,7 @@ export default function StoragePage() {
                       id="product-price"
                       type="number"
                       min={0}
-                      step={1000}
+                      step="any"
                       placeholder="0"
                       value={form.price}
                       onChange={(event) => handleChange("price", event.target.value)}
@@ -1855,7 +2772,11 @@ export default function StoragePage() {
                 className="cursor-pointer sm:min-w-[170px]"
                 disabled={isSubmittingProduct}
               >
-                <Plus className="size-4" />
+                {isSubmittingProduct ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Plus className="size-4" />
+                )}
                 {isSubmittingProduct
                   ? editingId
                     ? "Đang lưu..."
@@ -2243,7 +3164,7 @@ export default function StoragePage() {
                       <Input
                         type="number"
                         min={0}
-                        step={1000}
+                        step="any"
                         className="h-9 py-0 text-sm leading-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                         placeholder="0"
                         value={item.unitPrice}
