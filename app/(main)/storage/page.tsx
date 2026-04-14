@@ -12,6 +12,7 @@ import {
 import {
   Copy,
   Check,
+  Download,
   ImagePlus,
   Edit2,
   Loader2,
@@ -403,6 +404,7 @@ export default function StoragePage() {
   const [hoverPreview, setHoverPreview] = useState<HoverPreview | null>(null);
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
   const [isSubmittingProduct, setIsSubmittingProduct] = useState(false);
+  const [isExportingProducts, setIsExportingProducts] = useState(false);
   const [isSubmittingTransferOrder, setIsSubmittingTransferOrder] = useState(false);
   const [isSubmittingReturnOrder, setIsSubmittingReturnOrder] = useState(false);
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
@@ -1835,6 +1837,94 @@ export default function StoragePage() {
     }
   };
 
+  const handleExportProductsExcel = async () => {
+    if (isLoadingProducts || isExportingProducts || filteredProducts.length === 0) {
+      return;
+    }
+
+    const loadingToastId = toast.loading("Đang xuất danh sách sản phẩm...");
+    setIsExportingProducts(true);
+
+    try {
+      const XLSX = await import("xlsx");
+      const headers = [
+        "STT",
+        "Tên sản phẩm",
+        "SKU",
+        "Nhà cung cấp",
+        "Danh mục",
+        "Số lượng",
+        "Giá/SP",
+        "Tổng giá trị tồn",
+        "Trạng thái",
+        "Thời gian tạo",
+      ];
+
+      const rows = filteredProducts.map((product, index) => ({
+        STT: index + 1,
+        "Tên sản phẩm": product.name,
+        SKU: product.sku || "-",
+        "Nhà cung cấp": product.supplierName || "-",
+        "Danh mục": product.category || DEFAULT_CATEGORY_NAME,
+        "Số lượng": product.quantity,
+        "Giá/SP": product.price,
+        "Tổng giá trị tồn": product.quantity * product.price,
+        "Trạng thái": getStockBadge(product.quantity).label,
+        "Thời gian tạo": formatDateTime(product.createdAt),
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(rows, { header: headers });
+      worksheet["!cols"] = [
+        { wch: 6 },
+        { wch: 28 },
+        { wch: 14 },
+        { wch: 20 },
+        { wch: 16 },
+        { wch: 10 },
+        { wch: 14 },
+        { wch: 18 },
+        { wch: 14 },
+        { wch: 22 },
+      ];
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "DanhSachSanPham");
+
+      const output = XLSX.write(workbook, {
+        bookType: "xlsx",
+        type: "array",
+      });
+
+      const blob = new Blob([output], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+
+      const now = new Date();
+      const fileName = `danh-sach-san-pham-${now
+        .toISOString()
+        .slice(0, 19)
+        .replaceAll(":", "-")}.xlsx`;
+
+      link.href = objectUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(objectUrl);
+
+      toast.success("Đã xuất danh sách sản phẩm ra Excel.", { id: loadingToastId });
+    } catch (error) {
+      console.error("Không thể xuất danh sách sản phẩm:", error);
+      toast.error("Không thể xuất danh sách sản phẩm ra file Excel.", {
+        id: loadingToastId,
+      });
+    } finally {
+      setIsExportingProducts(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <section>
@@ -1959,22 +2049,38 @@ export default function StoragePage() {
 
           <Card className="border border-border/70">
             <CardHeader className="border-b border-border/70">
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <CardTitle>Danh sách sản phẩm</CardTitle>
                   <CardDescription>
                     Chỉnh sửa hoặc xóa trực tiếp từng sản phẩm trong bảng.
                   </CardDescription>
                 </div>
-                <Button
-                  type="button"
-                  className="cursor-pointer"
-                  disabled={isSubmittingProduct}
-                  onClick={handleOpenCreateProductDialog}
-                >
-                  <Plus className="size-4" />
+                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="cursor-pointer"
+                    disabled={isLoadingProducts || isExportingProducts || filteredProducts.length === 0}
+                    onClick={() => void handleExportProductsExcel()}
+                  >
+                    {isExportingProducts ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Download className="size-4" />
+                    )}
+                    {isExportingProducts ? "Đang xuất..." : "Xuất Excel"}
+                  </Button>
+                  <Button
+                    type="button"
+                    className="cursor-pointer"
+                    disabled={isSubmittingProduct}
+                    onClick={handleOpenCreateProductDialog}
+                  >
+                    <Plus className="size-4" />
                   Thêm sản phẩm
-                </Button>
+                  </Button>
+              </div>
               </div>
             </CardHeader>
             <CardContent className="pt-3">
