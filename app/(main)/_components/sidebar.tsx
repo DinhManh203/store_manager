@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, Settings, Store, Truck, Building2 } from "lucide-react";
+import { Building2, LayoutDashboard, Settings, Store, Truck, Users } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -12,6 +12,7 @@ const navigationItems = [
   { label: "Quản lý kho", href: "/storage", icon: Store },
   { label: "Quản lý chi nhánh", href: "/branches", icon: Building2 },
   { label: "Nhà cung cấp", href: "/suppliers", icon: Truck },
+  { label: "Quản lý Khách hàng", href: "/customers", icon: Users },
   { label: "Cài đặt", href: "/settings", icon: Settings },
 ];
 

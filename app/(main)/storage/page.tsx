@@ -432,15 +432,6 @@ export default function StoragePage() {
     [products]
   );
 
-  const totalInventoryValue = useMemo(
-    () =>
-      products.reduce(
-        (sum, product) => sum + product.quantity * product.price,
-        0
-      ),
-    [products]
-  );
-
   const filteredProducts = useMemo(() => {
     const keyword = normalizeSearchText(searchQuery);
     return products.filter((product) => {
@@ -1974,7 +1965,7 @@ export default function StoragePage() {
         </TabsList>
 
         <TabsContent value="inventory" className="mt-0 space-y-6">
-          <section className="grid gap-4 md:grid-cols-3">
+          <section className="grid gap-4 md:grid-cols-2">
             <Card className="border border-border/70">
               <CardHeader>
                 <CardDescription>Tổng sản phẩm</CardDescription>
@@ -1985,12 +1976,6 @@ export default function StoragePage() {
               <CardHeader>
                 <CardDescription>Tổng tồn kho</CardDescription>
                 <CardTitle>{totalQuantity}</CardTitle>
-              </CardHeader>
-            </Card>
-            <Card className="border border-border/70">
-              <CardHeader>
-                <CardDescription>Giá trị tồn kho</CardDescription>
-                <CardTitle>{formatCurrency(totalInventoryValue)}</CardTitle>
               </CardHeader>
             </Card>
           </section>
