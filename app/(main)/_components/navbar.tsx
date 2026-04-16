@@ -651,7 +651,7 @@ const Navbar = ({
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <div className="flex items-center gap-2 md:hidden">
+        {/* <div className="flex items-center gap-2 md:hidden">
           <Link
             href="/"
             onClick={triggerTopHeaderLoading}
@@ -666,7 +666,7 @@ const Navbar = ({
           >
             Cài đặt
           </Link>
-        </div>
+        </div> */}
       </div>
     </header>
   );

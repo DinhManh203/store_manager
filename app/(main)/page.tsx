@@ -467,12 +467,6 @@ export default function DashboardPage() {
         icon: PackageCheck,
         hint: "Cần xử lý ưu tiên",
       },
-      {
-        title: "Nhân sự hệ thống",
-        value: formatInteger(data.employees_count),
-        icon: Users,
-        hint: "Tài khoản đang có quyền truy cập",
-      },
     ],
     [data]
   );

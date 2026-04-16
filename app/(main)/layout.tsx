@@ -156,6 +156,10 @@ const MainLayout = ({ children }: { children: React.ReactNode }) => {
     setIsSidebarOpen((prev) => !prev);
   };
 
+  const closeSidebar = () => {
+    setIsSidebarOpen(false);
+  };
+
   if (isCheckingAuth) {
     return (
       <div className="flex min-h-svh items-center justify-center bg-background text-foreground">
@@ -176,7 +180,16 @@ const MainLayout = ({ children }: { children: React.ReactNode }) => {
         </div>
       ) : null}
 
-      <Sidebar isOpen={isSidebarOpen} />
+      <Sidebar isOpen={isSidebarOpen} onClose={closeSidebar} />
+
+      {isSidebarOpen ? (
+        <button
+          type="button"
+          className="fixed inset-0 z-[35] bg-black/50 md:hidden"
+          aria-label="Đóng thanh bên"
+          onClick={closeSidebar}
+        />
+      ) : null}
 
       <div
         className={cn(

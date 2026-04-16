@@ -15,22 +15,22 @@ export default function SettingsPage() {
       </div>
 
       <Tabs defaultValue="theme" className="w-full flex-col gap-4">
-        <TabsList className="h-auto w-fit max-w-full justify-start gap-1 overflow-x-auto rounded-xl bg-muted/70 p-1">
+        <TabsList className="grid h-auto w-full grid-cols-3 gap-1 rounded-xl bg-muted/70 p-1">
           <TabsTrigger
             value="theme"
-            className="h-9 flex-none cursor-pointer px-4 text-sm text-muted-foreground transition-colors data-[state=active]:bg-background data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-sm data-active:bg-background data-active:font-semibold data-active:text-foreground data-active:shadow-sm"
+            className="h-auto min-h-10 w-full min-w-0 cursor-pointer px-2 py-2 text-center text-[15px] leading-tight whitespace-normal text-muted-foreground transition-colors sm:h-9 sm:whitespace-nowrap data-[state=active]:bg-background data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-sm data-active:bg-background data-active:font-semibold data-active:text-foreground data-active:shadow-sm"
           >
             Hiển thị
           </TabsTrigger>
           <TabsTrigger
             value="branches"
-            className="h-9 flex-none cursor-pointer px-4 text-sm text-muted-foreground transition-colors data-[state=active]:bg-background data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-sm data-active:bg-background data-active:font-semibold data-active:text-foreground data-active:shadow-sm"
+            className="h-auto min-h-10 w-full min-w-0 cursor-pointer px-2 py-2 text-center text-[15px] leading-tight whitespace-normal text-muted-foreground transition-colors sm:h-9 sm:whitespace-nowrap data-[state=active]:bg-background data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-sm data-active:bg-background data-active:font-semibold data-active:text-foreground data-active:shadow-sm"
           >
             Thêm chi nhánh
           </TabsTrigger>
           <TabsTrigger
             value="suppliers"
-            className="h-9 flex-none cursor-pointer px-4 text-sm text-muted-foreground transition-colors data-[state=active]:bg-background data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-sm data-active:bg-background data-active:font-semibold data-active:text-foreground data-active:shadow-sm"
+            className="h-auto min-h-10 w-full min-w-0 cursor-pointer px-2 py-2 text-center text-[15px] leading-tight whitespace-normal text-muted-foreground transition-colors sm:h-9 sm:whitespace-nowrap data-[state=active]:bg-background data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-sm data-active:bg-background data-active:font-semibold data-active:text-foreground data-active:shadow-sm"
           >
             Thêm nhà cung cấp
           </TabsTrigger>

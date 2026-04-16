@@ -1937,28 +1937,28 @@ export default function StoragePage() {
         onValueChange={(value) => setActiveTab(value as StorageTab)}
         className="w-full flex-col gap-4"
       >
-        <TabsList className="h-auto w-fit max-w-full justify-start gap-1 overflow-x-auto rounded-xl bg-muted/70 p-1">
+        <TabsList className="grid h-auto w-full grid-cols-4 gap-1 rounded-xl bg-muted/70 p-1">
           <TabsTrigger
             value="inventory"
-            className="h-9 flex-none cursor-pointer px-4 text-sm text-muted-foreground transition-colors data-[state=active]:bg-background data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-sm data-active:bg-background data-active:font-semibold data-active:text-foreground data-active:shadow-sm"
+            className="h-9 w-full min-w-0 cursor-pointer px-1 text-[13px] text-muted-foreground transition-colors sm:px-4 sm:text-sm data-[state=active]:bg-background data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-sm data-active:bg-background data-active:font-semibold data-active:text-foreground data-active:shadow-sm"
           >
             Tồn kho
           </TabsTrigger>
           <TabsTrigger
             value="categories"
-            className="h-9 flex-none cursor-pointer px-4 text-sm text-muted-foreground transition-colors data-[state=active]:bg-background data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-sm data-active:bg-background data-active:font-semibold data-active:text-foreground data-active:shadow-sm"
+            className="h-9 w-full min-w-0 cursor-pointer px-1 text-[13px] text-muted-foreground transition-colors sm:px-4 sm:text-sm data-[state=active]:bg-background data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-sm data-active:bg-background data-active:font-semibold data-active:text-foreground data-active:shadow-sm"
           >
             Danh mục
           </TabsTrigger>
           <TabsTrigger
             value="transfer-orders"
-            className="h-9 flex-none cursor-pointer px-4 text-sm text-muted-foreground transition-colors data-[state=active]:bg-background data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-sm data-active:bg-background data-active:font-semibold data-active:text-foreground data-active:shadow-sm"
+            className="h-9 w-full min-w-0 cursor-pointer px-1 text-[13px] text-muted-foreground transition-colors sm:px-4 sm:text-sm data-[state=active]:bg-background data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-sm data-active:bg-background data-active:font-semibold data-active:text-foreground data-active:shadow-sm"
           >
             Đơn chuyển
           </TabsTrigger>
           <TabsTrigger
             value="return-orders"
-            className="h-9 flex-none cursor-pointer px-4 text-sm text-muted-foreground transition-colors data-[state=active]:bg-background data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-sm data-active:bg-background data-active:font-semibold data-active:text-foreground data-active:shadow-sm"
+            className="h-9 w-full min-w-0 cursor-pointer px-1 text-[13px] text-muted-foreground transition-colors sm:px-4 sm:text-sm data-[state=active]:bg-background data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-sm data-active:bg-background data-active:font-semibold data-active:text-foreground data-active:shadow-sm"
           >
             Đơn trả
           </TabsTrigger>
@@ -2069,7 +2069,8 @@ export default function StoragePage() {
               </div>
             </CardHeader>
             <CardContent className="pt-3">
-              <Table>
+              <div className="overflow-x-auto">
+                <Table className="min-w-[1120px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-14">STT</TableHead>
@@ -2182,6 +2183,7 @@ export default function StoragePage() {
                   )}
                 </TableBody>
               </Table>
+              </div>
 
               {productsLoadError ? (
                 <p className="mt-3 text-sm text-destructive">{productsLoadError}</p>
@@ -2278,7 +2280,8 @@ export default function StoragePage() {
                 <p className="text-sm text-destructive">{categoryError}</p>
               ) : null}
 
-              <Table>
+              <div className="overflow-x-auto">
+                <Table className="min-w-[760px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-14">STT</TableHead>
@@ -2402,6 +2405,7 @@ export default function StoragePage() {
                   )}
                 </TableBody>
               </Table>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -2409,7 +2413,7 @@ export default function StoragePage() {
         <TabsContent value="transfer-orders" className="mt-0">
           <Card className="border border-border/70">
             <CardHeader className="border-b border-border/70">
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <CardTitle>Đơn chuyển kho</CardTitle>
                   <CardDescription>
@@ -2418,7 +2422,7 @@ export default function StoragePage() {
                 </div>
                 <Button
                   type="button"
-                  className="cursor-pointer"
+                  className="w-full cursor-pointer sm:w-auto"
                   onClick={handleOpenCreateTransferOrder}
                 >
                   <Plus className="size-4" />
@@ -2427,7 +2431,8 @@ export default function StoragePage() {
               </div>
             </CardHeader>
             <CardContent className="pt-3">
-              <Table>
+              <div className="overflow-x-auto">
+                <Table className="min-w-[980px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-14">STT</TableHead>
@@ -2485,6 +2490,7 @@ export default function StoragePage() {
                   )}
                 </TableBody>
               </Table>
+              </div>
 
               {transferOrdersLoadError ? (
                 <p className="mt-3 text-sm text-destructive">{transferOrdersLoadError}</p>
@@ -2496,7 +2502,7 @@ export default function StoragePage() {
         <TabsContent value="return-orders" className="mt-0">
           <Card className="border border-border/70">
             <CardHeader className="border-b border-border/70">
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <CardTitle>Đơn trả kho</CardTitle>
                   <CardDescription>
@@ -2505,7 +2511,7 @@ export default function StoragePage() {
                 </div>
                 <Button
                   type="button"
-                  className="cursor-pointer"
+                  className="w-full cursor-pointer sm:w-auto"
                   onClick={handleOpenCreateReturnOrder}
                 >
                   <Plus className="size-4" />
@@ -2514,7 +2520,8 @@ export default function StoragePage() {
               </div>
             </CardHeader>
             <CardContent className="pt-3">
-              <Table>
+              <div className="overflow-x-auto">
+                <Table className="min-w-[980px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-14">STT</TableHead>
@@ -2574,6 +2581,7 @@ export default function StoragePage() {
                   )}
                 </TableBody>
               </Table>
+              </div>
 
               {returnOrdersLoadError ? (
                 <p className="mt-3 text-sm text-destructive">{returnOrdersLoadError}</p>
@@ -2586,9 +2594,9 @@ export default function StoragePage() {
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={handleDeleteDialogOpenChange}>
         <AlertDialogContent
           size="default"
-          className="!max-w-[34rem] sm:!max-w-[38rem] overflow-hidden rounded-lg bg-background p-0 shadow-2xl ring-1 ring-black/10"
+          className="w-[calc(100vw-1rem)] !max-w-[34rem] overflow-hidden rounded-lg bg-background p-0 shadow-2xl ring-1 ring-black/10 sm:!max-w-[38rem]"
         >
-          <AlertDialogHeader className="gap-0 border-b border-border/70 px-5 py-4">
+          <AlertDialogHeader className="gap-0 border-b border-border/70 px-4 py-4 sm:px-5">
             <div className="flex min-w-0 items-center gap-3">
               <AlertDialogMedia className="m-0 size-10 shrink-0 rounded-lg bg-destructive/12 text-destructive">
                 <Trash2 className="size-5" />
@@ -2599,7 +2607,7 @@ export default function StoragePage() {
             </div>
           </AlertDialogHeader>
 
-          <AlertDialogDescription className="px-5 py-4 text-sm leading-relaxed text-foreground/75">
+          <AlertDialogDescription className="px-4 py-4 text-sm leading-relaxed text-foreground/75 sm:px-5">
             <span className="block">
               {productToDelete
                 ? `Bạn có chắc muốn xóa sản phẩm "${productToDelete.name}"?`
@@ -2608,17 +2616,17 @@ export default function StoragePage() {
             <span className="mt-1 block">Hành động này không thể hoàn tác.</span>
           </AlertDialogDescription>
 
-          <AlertDialogFooter className="m-0 flex items-center justify-end gap-2 border-t border-border/70 bg-background px-5 py-4">
+          <AlertDialogFooter className="m-0 flex flex-col-reverse gap-2 border-t border-border/70 bg-background px-4 py-4 sm:flex-row sm:items-center sm:justify-end sm:px-5">
             <AlertDialogCancel
               disabled={Boolean(deletingProductId)}
-              className="cursor-pointer rounded-lg border-border/70 bg-background px-4 text-sm font-medium text-foreground hover:bg-muted/50"
+              className="w-full cursor-pointer rounded-lg border-border/70 bg-background px-4 text-sm font-medium text-foreground hover:bg-muted/50 sm:w-auto"
             >
               Hủy
             </AlertDialogCancel>
             <AlertDialogAction
               variant="outline"
               disabled={!productToDelete || Boolean(deletingProductId)}
-              className="cursor-pointer rounded-lg border-destructive/15 bg-destructive/10 px-4 text-sm font-semibold text-destructive hover:bg-destructive/15 hover:text-destructive"
+              className="w-full cursor-pointer rounded-lg border-destructive/15 bg-destructive/10 px-4 text-sm font-semibold text-destructive hover:bg-destructive/15 hover:text-destructive sm:w-auto"
               onClick={(event) => {
                 event.preventDefault();
                 void handleConfirmDelete();
@@ -2640,11 +2648,11 @@ export default function StoragePage() {
         }}
       >
         <DialogContent
-          className="max-h-[90vh] overflow-y-auto p-0 sm:max-w-4xl"
+          className="max-h-[90vh] w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] overflow-y-auto p-0 sm:max-w-4xl"
           onPointerDownOutside={(event) => event.preventDefault()}
           onInteractOutside={(event) => event.preventDefault()}
         >
-          <DialogHeader className="space-y-2 border-b border-border/70 px-6 pt-6 pb-4">
+          <DialogHeader className="space-y-2 border-b border-border/70 px-4 pt-5 pb-4 sm:px-6 sm:pt-6">
             <div className="flex flex-wrap items-center gap-2">
               <DialogTitle className="text-xl">
                 {editingId ? "Cập nhật sản phẩm" : "Thêm sản phẩm mới"}
@@ -2658,7 +2666,7 @@ export default function StoragePage() {
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleSubmit} className="space-y-5 px-6 py-5">
+          <form onSubmit={handleSubmit} className="space-y-5 px-4 py-5 sm:px-6">
             <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
               <div className="space-y-3">
                 <div className="rounded-xl bg-muted/30 p-4">
@@ -2895,18 +2903,18 @@ export default function StoragePage() {
         }}
       >
         <DialogContent
-          className="max-h-[90vh] overflow-y-auto p-0 sm:max-w-3xl"
+          className="max-h-[90vh] w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] overflow-y-auto p-0 sm:max-w-3xl"
           onPointerDownOutside={(event) => event.preventDefault()}
           onInteractOutside={(event) => event.preventDefault()}
         >
-          <DialogHeader className="space-y-2 border-b border-border/70 px-6 pt-6 pb-4">
+          <DialogHeader className="space-y-2 border-b border-border/70 px-4 pt-5 pb-4 sm:px-6 sm:pt-6">
             <DialogTitle className="text-xl">Thêm đơn chuyển kho</DialogTitle>
             <DialogDescription>
               Tạo phiếu xuất kho nội bộ. Chọn sản phẩm, số lượng và ghi chú nếu cần.
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleSubmitTransferOrder} className="space-y-5 px-6 py-5">
+          <form onSubmit={handleSubmitTransferOrder} className="space-y-5 px-4 py-5 sm:px-6">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <label htmlFor="transfer-target-branch" className="text-sm font-medium text-destructive">
@@ -2961,13 +2969,13 @@ export default function StoragePage() {
             </div>
 
             <div className="rounded-xl border border-border/70 bg-background p-4">
-              <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="mb-3 flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-sm font-medium">Danh sách sản phẩm chuyển</p>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="cursor-pointer"
+                  className="w-full cursor-pointer sm:w-auto"
                   disabled={isSubmittingTransferOrder}
                   onClick={handleAddTransferOrderItem}
                 >
@@ -2983,7 +2991,7 @@ export default function StoragePage() {
                   return (
                     <div
                       key={`transfer-item-${index + 1}`}
-                      className="grid gap-3 rounded-lg border border-border/70 bg-muted/20 p-3 sm:grid-cols-[minmax(0,1fr)_140px_140px]"
+                      className="grid gap-3 rounded-lg border border-border/70 bg-muted/20 p-3 md:grid-cols-[minmax(0,1fr)_140px_140px]"
                     >
                       <div className="space-y-2">
                         <label className="block h-4 text-xs leading-4 font-medium text-muted-foreground">
@@ -3102,11 +3110,11 @@ export default function StoragePage() {
         }}
       >
         <DialogContent
-          className="max-h-[90vh] overflow-y-auto p-0 sm:max-w-4xl"
+          className="max-h-[90vh] w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] overflow-y-auto p-0 sm:max-w-4xl"
           onPointerDownOutside={(event) => event.preventDefault()}
           onInteractOutside={(event) => event.preventDefault()}
         >
-          <DialogHeader className="space-y-2 border-b border-border/70 px-6 pt-6 pb-4">
+          <DialogHeader className="space-y-2 border-b border-border/70 px-4 pt-5 pb-4 sm:px-6 sm:pt-6">
             <DialogTitle className="text-xl">Thêm đơn trả kho</DialogTitle>
             <DialogDescription>
               Tạo phiếu nhập kho từ trả hàng hoặc hoàn kho, có thể chọn nhà cung cấp và đơn
@@ -3114,7 +3122,7 @@ export default function StoragePage() {
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleSubmitReturnOrder} className="space-y-5 px-6 py-5">
+          <form onSubmit={handleSubmitReturnOrder} className="space-y-5 px-4 py-5 sm:px-6">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <label htmlFor="return-supplier" className="text-sm font-medium">
@@ -3186,13 +3194,13 @@ export default function StoragePage() {
             </div>
 
             <div className="rounded-xl border border-border/70 bg-background p-4">
-              <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="mb-3 flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-sm font-medium">Danh sách sản phẩm nhập</p>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="cursor-pointer"
+                  className="w-full cursor-pointer sm:w-auto"
                   disabled={isSubmittingReturnOrder}
                   onClick={handleAddReturnOrderItem}
                 >
@@ -3205,7 +3213,7 @@ export default function StoragePage() {
                 {returnOrderForm.items.map((item, index) => (
                   <div
                     key={`return-item-${index + 1}`}
-                    className="grid gap-3 rounded-lg border border-border/70 bg-muted/20 p-3 lg:grid-cols-[minmax(0,1fr)_110px_150px_140px]"
+                    className="grid gap-3 rounded-lg border border-border/70 bg-muted/20 p-3 md:grid-cols-[minmax(0,1fr)_110px_150px_140px]"
                   >
                     <div className="space-y-2">
                       <label className="block h-4 text-xs leading-4 font-medium text-muted-foreground">

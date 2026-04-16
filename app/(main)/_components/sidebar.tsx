@@ -3,8 +3,16 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Building2, LayoutDashboard, Settings, Store, Truck, Users } from "lucide-react";
+import {
+  Building2,
+  LayoutDashboard,
+  Settings,
+  Store,
+  Truck,
+  X,
+} from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const navigationItems = [
@@ -12,15 +20,15 @@ const navigationItems = [
   { label: "Quản lý kho", href: "/storage", icon: Store },
   { label: "Quản lý chi nhánh", href: "/branches", icon: Building2 },
   { label: "Nhà cung cấp", href: "/suppliers", icon: Truck },
-  { label: "Quản lý Khách hàng", href: "/customers", icon: Users },
   { label: "Cài đặt", href: "/settings", icon: Settings },
 ];
 
 type SidebarProps = {
   isOpen: boolean;
+  onClose: () => void;
 };
 
-const Sidebar = ({ isOpen }: SidebarProps) => {
+const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
   const pathname = usePathname();
   const router = useRouter();
 
@@ -30,6 +38,16 @@ const Sidebar = ({ isOpen }: SidebarProps) => {
     }
 
     window.dispatchEvent(new Event("app:top-header-loading-start"));
+  };
+
+  const closeSidebarOnMobile = () => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (window.matchMedia("(max-width: 767px)").matches) {
+      onClose();
+    }
   };
 
   useEffect(() => {
@@ -52,6 +70,16 @@ const Sidebar = ({ isOpen }: SidebarProps) => {
           </p>
           <h1 className="text-xl font-semibold tracking-tight">Vận hành kho</h1>
         </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="cursor-pointer md:hidden"
+          onClick={onClose}
+          aria-label="Đóng thanh bên"
+        >
+          <X className="size-5" />
+        </Button>
       </div>
 
       <nav className="space-y-1.5">
@@ -67,7 +95,10 @@ const Sidebar = ({ isOpen }: SidebarProps) => {
               prefetch
               onMouseEnter={() => router.prefetch(item.href)}
               onFocus={() => router.prefetch(item.href)}
-              onClick={startTopHeaderLoading}
+              onClick={() => {
+                startTopHeaderLoading();
+                closeSidebarOnMobile();
+              }}
               className={cn(
                 "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors will-change-[background-color,color]",
                 isActive
