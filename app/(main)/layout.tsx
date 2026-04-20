@@ -152,6 +152,40 @@ const MainLayout = ({ children }: { children: React.ReactNode }) => {
     };
   }, [isTopHeaderLoading]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const mobileMediaQuery = window.matchMedia("(max-width: 767px)");
+
+    const closeSidebarWhenMobile = () => {
+      if (mobileMediaQuery.matches) {
+        setIsSidebarOpen(false);
+      }
+    };
+
+    const handleMobileViewportChange = (event: MediaQueryListEvent) => {
+      if (event.matches) {
+        setIsSidebarOpen(false);
+      }
+    };
+
+    closeSidebarWhenMobile();
+
+    if (typeof mobileMediaQuery.addEventListener === "function") {
+      mobileMediaQuery.addEventListener("change", handleMobileViewportChange);
+      return () => {
+        mobileMediaQuery.removeEventListener("change", handleMobileViewportChange);
+      };
+    }
+
+    mobileMediaQuery.addListener(handleMobileViewportChange);
+    return () => {
+      mobileMediaQuery.removeListener(handleMobileViewportChange);
+    };
+  }, []);
+
   const toggleSidebar = () => {
     setIsSidebarOpen((prev) => !prev);
   };
