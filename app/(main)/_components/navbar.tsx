@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -11,7 +10,6 @@ import {
   Moon,
   PackagePlus,
   RefreshCw,
-  ShieldCheck,
   Sun,
   UserCircle2,
 } from "lucide-react";
@@ -619,22 +617,22 @@ const Navbar = ({
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button
+            <Button
               type="button"
-              className="hidden cursor-pointer items-center gap-2 rounded-lg border border-border/70 bg-card px-2.5 py-1.5 text-left transition-colors hover:bg-muted md:flex"
+              variant="outline"
+              size="icon"
+              className="cursor-pointer"
               aria-label="Mở menu tài khoản"
+              title="Tài khoản"
             >
-              <div className="flex size-8 items-center justify-center rounded-full bg-primary/12 text-primary">
-                <ShieldCheck className="size-4" />
-              </div>
-              <div className="leading-tight">
-                <p className="text-xs font-medium">{authName}</p>
-                <p className="text-[11px] text-muted-foreground">{authRole}</p>
-              </div>
-            </button>
+              <UserCircle2 className="size-4" />
+            </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-52">
-            <DropdownMenuLabel>Tài khoản</DropdownMenuLabel>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuLabel className="leading-tight">
+              <p className="text-xs font-medium">{authName}</p>
+              <p className="text-[11px] font-normal text-muted-foreground">{authRole}</p>
+            </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleOpenProfile} className="cursor-pointer">
               <UserCircle2 className="size-4" />
